@@ -1,0 +1,49 @@
+pgd:
+  name: pgd
+  type: continuous
+  placement: suffix
+  generate_completions: last
+  num_steps: 100
+  seed: 0
+  batch_size: 2
+  optim_str_init: "x x x x x x x x x x x x x x x x x x x x"
+  epsilon: 100000.
+  alpha: 0.001
+  generation_steps: 256
+gcg:
+  name: gcg
+  type: discrete
+  placement: suffix
+  generate_completions: last
+  num_steps: 250
+  seed: 0
+  batch_size: 512
+  optim_str_init: "x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x"
+  search_width: 512
+  topk: 256
+  n_replace: 1
+  buffer_size: 0
+  use_mellowmax: False
+  use_constrained_gradient: False
+  mellowmax_alpha: 1.0
+  early_stop: False
+  use_prefix_cache: True
+  allow_non_ascii: False
+  filter_ids: True
+  add_space_before_target: False
+  verbosity: WARNING
+autodan:
+  name: autodan
+  type: discrete
+  placement: prefix
+  generate_completions: last
+  num_steps: 100
+  seed: 0
+  batch_size: 64
+  forward_batch_size: null
+  eval_steps: 5
+  num_elites: 0.05
+  crossover: 0.5
+  num_points: 5
+  mutation: 0.01
+  mutate_model_id: null

@@ -1,0 +1,17 @@
+defaults:
+    - config
+    - _self_
+
+attacks:
+    pgd:
+        num_steps: 2
+    gcg:
+        num_steps: 1
+    autodan:
+        num_steps: 1
+
+datasets:
+    adv_behaviors:
+        num_examples: 2
+    jbb_behaviors:
+        num_examples: 2

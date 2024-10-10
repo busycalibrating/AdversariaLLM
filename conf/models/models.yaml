@@ -1,0 +1,56 @@
+google/gemma-2-2b-it:
+  id: google/gemma-2-2b-it
+  tokenizer_id: google/gemma-2-2b-it
+  short_name: Gemma
+  developer_name: Google
+  attn_implementation: null
+  compile: False
+  dtype: float16
+mistralai/Mistral-7B-Instruct-v0.3:
+  id: mistralai/Mistral-7B-Instruct-v0.3
+  tokenizer_id: mistralai/Mistral-7B-Instruct-v0.3
+  short_name: Mistral
+  developer_name: Mistral AI
+  attn_implementation: null
+  compile: False
+  dtype: int8
+meta-llama/Meta-Llama-3.1-8B-Instruct:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  attn_implementation: null
+  compile: False
+  dtype: int8
+qwen/Qwen2-7B-Instruct:
+  id: qwen/Qwen2-7B-Instruct
+  tokenizer_id: qwen/Qwen2-7B-Instruct
+  short_name: Qwen2
+  developer_name: Alibaba
+  attn_implementation: null
+  compile: False
+  dtype: int8
+HuggingFaceH4/zephyr-7b-beta:
+  id: HuggingFaceH4/zephyr-7b-beta
+  tokenizer_id: HuggingFaceH4/zephyr-7b-beta
+  short_name: Zephyr
+  developer_name: Hugging Face
+  attn_implementation: null
+  compile: False
+  dtype: int8
+ContinuousAT/Llama-2-7B-CAT:
+  id: ContinuousAT/Llama-2-7B-CAT
+  tokenizer_id: meta-llama/Llama-2-7b-chat-hf
+  short_name: Llama
+  developer_name: ContinuousAT
+  attn_implementation: null
+  compile: False
+  dtype: int8
+ContinuousAT/Zephyr-CAT:
+  id: ContinuousAT/Zephyr-CAT
+  tokenizer_id: HuggingFaceH4/zephyr-7b-beta
+  short_name: Zephyr
+  developer_name: ContinuousAT
+  attn_implementation: null
+  compile: False
+  dtype: int8

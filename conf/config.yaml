@@ -1,0 +1,12 @@
+defaults:
+  - attacks: attacks
+  - datasets: datasets
+  - models: models
+dtype: float16
+name: testing
+log_file: outputs/
+
+# overrides for parallelism
+attack_name: null
+dataset_name: null
+model_name: null
