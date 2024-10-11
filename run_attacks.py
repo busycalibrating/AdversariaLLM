@@ -9,10 +9,10 @@ import hydra
 import torch
 from omegaconf import DictConfig, OmegaConf
 
-from attacks import Attack, AttackResult, judge
-from datasets import Dataset
-from errors import print_exceptions
-from io_utils import load_model_and_tokenizer, log_attack
+from src.attacks import Attack, AttackResult, judge
+from src.datasets import Dataset
+from src.errors import print_exceptions
+from src.io_utils import load_model_and_tokenizer, log_attack
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.use_deterministic_algorithms(True, warn_only=True)  # determinism
@@ -30,7 +30,7 @@ class RunConfig:
     attack_params: dict
 
 
-@hydra.main(config_path="../conf", config_name="config", version_base=None)
+@hydra.main(config_path="./conf", config_name="config", version_base="1.3")
 @print_exceptions
 def main(cfg: DictConfig) -> None:
     date_time_string = datetime.now().strftime("%Y-%m-%d/%H-%M-%S")

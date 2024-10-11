@@ -8,7 +8,7 @@ import torch
 from dataclasses import asdict
 from omegaconf import OmegaConf
 
-from attacks import AttackResult
+from src.attacks import AttackResult
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

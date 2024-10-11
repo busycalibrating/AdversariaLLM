@@ -10,7 +10,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from accelerate.utils import find_executable_batch_size
-from tqdm import tqdm
+from tqdm import trange
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from .attack import Attack
@@ -249,7 +249,7 @@ class AutoDANAttack(Attack):
                 )
                 return inputs
 
-            for step in (pbar := tqdm(range(self.config.num_steps))):
+            for step in (pbar := trange(self.config.num_steps)):
                 candidates = [
                     [{"role": "user", "content": prefix + message["content"]}]
                     for prefix in optim_strings[: self.config.batch_size]
@@ -345,7 +345,6 @@ class AutoDANAttack(Attack):
     def compute_candidates_loss(forward_batch_size, model, inputs_embeds, target_ids):
         all_losses = []
 
-        print(inputs_embeds.isnan().float().sum())
         for i in range(0, inputs_embeds.shape[0], forward_batch_size):
             with torch.no_grad():
                 outputs = model(inputs_embeds=inputs_embeds[i : i + forward_batch_size])
@@ -365,11 +364,6 @@ class AutoDANAttack(Attack):
                 .view(forward_batch_size, -1)
                 .mean(dim=1)
             )
-
-            print(loss)
-            print(loss.isnan().float().sum())
-            print(logits.isnan().float().sum())
-            print(logits)
             all_losses.append(loss)
 
         return torch.cat(all_losses)

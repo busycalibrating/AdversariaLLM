@@ -4,7 +4,7 @@ import re
 import torch
 import transformers
 
-from attacks import AttackResult
+from .attack import AttackResult
 
 from .constants import REFUSAL_PREFIXES
 

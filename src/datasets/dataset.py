@@ -33,12 +33,17 @@ class AdvBehaviorsConfig:
     targets_path: str
     categories: list[str]
     seed: int = 0
-    num_examples: int = 300
+    idx: list[int]|int|None = None
 
 
 class AdvBehaviorsDataset(Dataset):
     def __init__(self, config: AdvBehaviorsConfig):
         self.config = config
+        import logging
+        import os
+        import sys
+        logging.info(f"Loading dataset from {config.messages_path}")
+        logging.info(f"Current working directory: {os.getcwd()}")
 
         self.messages = pd.read_csv(config.messages_path, header=0)
         # Ignore copyright-related rows
@@ -52,7 +57,12 @@ class AdvBehaviorsDataset(Dataset):
 
         # shuffle
         torch.manual_seed(config.seed)
-        idx = torch.randperm(len(self.messages))[: config.num_examples]
+        idx = torch.randperm(len(self.messages))
+        # We keep this shuffle for backwards compatibility
+        if isinstance(config.idx, int):
+            idx = idx[config.idx:config.idx + 1]
+        elif isinstance(config.idx, list):
+            idx = idx[config.idx]
         # cut
         self.messages = self.messages.iloc[idx].reset_index(drop=True)
         self.targets = self.targets.iloc[idx].reset_index(drop=True)
@@ -74,7 +84,7 @@ class AdvBehaviorsDataset(Dataset):
 class JBBBehaviorsConfig:
     name: str
     seed: int = 0
-    num_examples: int = 100
+    idx: list[int]|int|None = None
 
 
 class JBBBehaviorsDataset(Dataset):
@@ -84,7 +94,11 @@ class JBBBehaviorsDataset(Dataset):
 
         # shuffle
         torch.manual_seed(config.seed)
-        idx = torch.randperm(len(dataset))[: config.num_examples]
+        idx = torch.randperm(len(dataset))
+        if isinstance(config.idx, int):
+            idx = idx[config.idx:config.idx + 1]
+        elif isinstance(config.idx, list):
+            idx = idx[config.idx]
         self.messages = dataset.Goal.iloc[idx].reset_index(drop=True)
         self.targets = dataset.Target.iloc[idx].reset_index(drop=True)
 
@@ -105,7 +119,6 @@ if __name__ == "__main__":
             messages_path="data/behavior_datasets/harmbench_behaviors_text_all.csv",
             targets_path="data/optimizer_targets/harmbench_targets_text.json",
             seed=1,
-            num_examples=400,
             categories=[
                 "chemical_biological",
                 "illegal",
@@ -118,6 +131,6 @@ if __name__ == "__main__":
     )
     print(len(d))
     d = Dataset.from_name("jbb_behaviors")(
-        JBBBehaviorsConfig("jbb_behaviors", seed=1, num_examples=100)
+        JBBBehaviorsConfig("jbb_behaviors", seed=1)
     )
     print(len(d))

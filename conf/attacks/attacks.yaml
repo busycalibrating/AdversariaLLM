@@ -18,7 +18,7 @@ gcg:
   num_steps: 250
   seed: 0
   batch_size: 512
-  optim_str_init: "x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x"
+  optim_str_init: "x x x x x x x x x x x x x x x x x x x x"
   search_width: 512
   topk: 256
   n_replace: 1

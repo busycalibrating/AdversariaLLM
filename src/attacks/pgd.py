@@ -1,12 +1,13 @@
 """Implementation of a embedding-space continuous attack."""
 
+import sys
 from dataclasses import dataclass
 from typing import Literal
 
 import torch
 import torch.nn.functional as F
 from accelerate.utils import find_executable_batch_size
-from tqdm import tqdm
+from tqdm import trange
 
 from .attack import Attack
 
@@ -131,7 +132,7 @@ class PGDAttack(Attack):
                     inputs[i : i + batch_size]
                 )
                 perturbed_embeddings = original_embeddings.clone().detach()
-                for _ in tqdm(range(self.config.num_steps)):
+                for _ in trange(self.config.num_steps, file=sys.stderr):
                     perturbed_embeddings.requires_grad = True
                     model.zero_grad()
                     outputs = model(
