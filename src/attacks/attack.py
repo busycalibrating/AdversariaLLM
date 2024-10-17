@@ -47,6 +47,14 @@ class Attack:
                 from .pgd import PGDAttack
 
                 return PGDAttack
+            case "pgd_one_hot":
+                from .pgd_one_hot import PGDOneHotAttack
+
+                return PGDOneHotAttack
+            case "ample_gcg":
+                from .ample_gcg import AmpleGCGAttack
+
+                return AmpleGCGAttack
             case _:
                 raise ValueError(f"Unknown attack: {name}")
 

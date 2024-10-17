@@ -1,4 +1,5 @@
 """Single file implementation of the AutoDAN attack [https://arxiv.org/abs/2310.04451]"""
+# TODO: move to own get_batched_completions function
 
 import gc
 import random
@@ -13,7 +14,8 @@ from accelerate.utils import find_executable_batch_size
 from tqdm import trange
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from .attack import Attack
+from .attack import Attack, AttackResult
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -179,7 +181,7 @@ class AutoDANAttack(Attack):
     def __init__(self, config: AutoDANConfig):
         super().__init__(config)
 
-    def run(self, model, tokenizer, dataset) -> list[AutoDANResult]:
+    def run(self, model, tokenizer, dataset) -> AttackResult:
         """Run the AutoDAN attack against a given model and dataset."""
         if self.config.mutate_model_id is not None:
             mutate_model = (
@@ -202,9 +204,9 @@ class AutoDANAttack(Attack):
         ]
 
         forward_batch_size = self.config.forward_batch_size or self.config.batch_size
-        results = []
+        results = AttackResult([],[],[],[])
         # ========== Behavior meta data ==========
-        for message, target in dataset:
+        for msg, target in dataset:
             autodan_target_prefix = "(🔓Developer Mode Output) "
             target = autodan_target_prefix + target
 
@@ -215,7 +217,7 @@ class AutoDANAttack(Attack):
             # ===== init target embeds =====
             embed_layer = model.get_input_embeddings()
             target_ids = tokenizer(
-                [target], padding=False, add_special_tokens=False, return_tensors="pt"
+                [target], add_special_tokens=False, return_tensors="pt"
             )["input_ids"].to(model.device)
             target_embeds = embed_layer(target_ids)
 
@@ -251,7 +253,7 @@ class AutoDANAttack(Attack):
 
             for step in (pbar := trange(self.config.num_steps)):
                 candidates = [
-                    [{"role": "user", "content": prefix + message["content"]}]
+                    [{"role": "user", "content": prefix + msg["content"]}]
                     for prefix in optim_strings[: self.config.batch_size]
                 ]
                 adv_prompt_tokens = chat_template_to_tokens(candidates)
@@ -302,7 +304,7 @@ class AutoDANAttack(Attack):
             # ====== Generate completions ======
             if self.config.generate_completions == "all":
                 candidates = [
-                    [{"role": "user", "content": prefix + message["content"]}]
+                    [{"role": "user", "content": prefix + msg["content"]}]
                     for prefix in attacks
                 ]
             elif self.config.generate_completions == "best":
@@ -311,13 +313,13 @@ class AutoDANAttack(Attack):
                     [
                         {
                             "role": "user",
-                            "content": attacks[best_attack_id] + message["content"],
+                            "content": attacks[best_attack_id] + msg["content"],
                         }
                     ]
                 ]
             elif self.config.generate_completions == "last":
                 candidates = [
-                    [{"role": "user", "content": attacks[-1] + message["content"]}]
+                    [{"role": "user", "content": attacks[-1] + msg["content"]}]
                 ]
 
             with torch.no_grad():
@@ -330,15 +332,10 @@ class AutoDANAttack(Attack):
             # Extract only the newly generated tokens
             new_tokens = output[:, adv_prompt_tokens.size(1) :]
             completions = tokenizer.batch_decode(new_tokens, skip_special_tokens=True)
-
-            results.append(
-                AutoDANResult(
-                    losses=losses,
-                    attacks=attacks,
-                    prompt=message,
-                    completions=completions,
-                )
-            )
+            results.losses.append(losses)
+            results.attacks.append(attacks)
+            results.prompts.append(msg)
+            results.completions.append(completions)
         return results
 
     @staticmethod

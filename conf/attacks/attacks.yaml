@@ -10,6 +10,41 @@ pgd:
   epsilon: 100000.
   alpha: 0.001
   generation_steps: 256
+pgd_one_hot:
+  name: pgd_one_hot
+  type: continuous
+  placement: suffix
+  generate_completions: last
+  num_steps: 100
+  seed: 0
+  batch_size: 2
+  optim_str_init: "x x x x x x x x x x x x x x x x x x x x"
+  epsilon: 100000.
+  momentum: 0.5
+  alpha: 0.001
+  generation_steps: 256
+ample_gcg:
+  name: ample_gcg
+  type: discrete
+  placement: suffix
+  generate_completions: all
+  seed: 0
+  prompter_lm:
+    id: osunlp/AmpleGCG-llama2-sourced-llama2-7b-chat
+    batch_size: 2
+    torch_dtype: int8
+    generation_config:
+      num_return_sequences: 200 # number of tries per prompt
+      num_beams: 200
+      num_beam_groups: 200
+      do_sample: false
+      max_new_tokens: 20  # attack length
+      min_new_tokens: 20
+      diversity_penalty: 1.0
+  target_lm:
+    batch_size: 64
+    generation_config:
+      max_new_tokens: 100
 gcg:
   name: gcg
   type: discrete

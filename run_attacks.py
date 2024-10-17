@@ -9,7 +9,7 @@ import hydra
 import torch
 from omegaconf import DictConfig, OmegaConf
 
-from src.attacks import Attack, AttackResult, judge
+from src.attacks import Attack
 from src.datasets import Dataset
 from src.errors import print_exceptions
 from src.io_utils import load_model_and_tokenizer, log_attack
@@ -21,13 +21,13 @@ torch.backends.cuda.matmul.allow_tf32 = True
 
 @dataclass
 class RunConfig:
-    config: dict
     model: str
     dataset: str
     attack: str
     model_params: dict
     dataset_params: dict
     attack_params: dict
+    config: dict
 
 
 @hydra.main(config_path="./conf", config_name="config", version_base="1.3")
@@ -58,19 +58,18 @@ def main(cfg: DictConfig) -> None:
                 )
                 attack = Attack.from_name(attack_name)(attack_params)
                 results = attack.run(model, tokenizer, dataset)
-                results_judged: AttackResult = judge(results)
                 # get combined config for this run
                 run_config = RunConfig(
-                    cfg,
                     model_name,
                     dataset_name,
                     attack_name,
                     model_params,
                     dataset_params,
                     attack_params,
+                    cfg,
                 )
                 log_attack(
-                    run_config, results_judged, cfg.log_file + f"{date_time_string}/run.json"
+                    run_config, results, cfg.log_file + f"{date_time_string}/run.json"
                 )
 
 

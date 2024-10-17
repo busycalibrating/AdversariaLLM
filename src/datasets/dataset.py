@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import jailbreakbench as jbb
 import pandas as pd
 import torch
+from typing import Sequence
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -61,8 +62,10 @@ class AdvBehaviorsDataset(Dataset):
         # We keep this shuffle for backwards compatibility
         if isinstance(config.idx, int):
             idx = idx[config.idx:config.idx + 1]
-        elif isinstance(config.idx, list):
+        elif isinstance(config.idx, Sequence):
             idx = idx[config.idx]
+        elif config.idx is not None:
+            raise ValueError(f"Invalid idx: {config.idx}")
         # cut
         self.messages = self.messages.iloc[idx].reset_index(drop=True)
         self.targets = self.targets.iloc[idx].reset_index(drop=True)
@@ -97,8 +100,10 @@ class JBBBehaviorsDataset(Dataset):
         idx = torch.randperm(len(dataset))
         if isinstance(config.idx, int):
             idx = idx[config.idx:config.idx + 1]
-        elif isinstance(config.idx, list):
+        elif isinstance(config.idx, Sequence):
             idx = idx[config.idx]
+        elif config.idx is not None:
+            raise ValueError(f"Invalid idx: {config.idx}")
         self.messages = dataset.Goal.iloc[idx].reset_index(drop=True)
         self.targets = dataset.Target.iloc[idx].reset_index(drop=True)
 

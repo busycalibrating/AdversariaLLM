@@ -12,15 +12,15 @@ hydra:
   #     attack_name: pgd, gcg, autodan
   #     datasets.adv_behaviors.idx: range(0, 20)
   run:
-    dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}/
+    dir: /nfs/staff-ssd/beyer/llm-quick-check/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}/
   job:
     chdir: true
   sweep:
-    dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}/
+    dir: /nfs/staff-ssd/beyer/llm-quick-check/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}/
 
 dtype: float16
 name: testing
-log_file: ../../../../outputs/
+log_file: /nfs/staff-ssd/beyer/llm-quick-check/outputs/
 
 # overrides for parallelism
 attack_name: null

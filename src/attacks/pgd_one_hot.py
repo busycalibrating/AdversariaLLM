@@ -1,4 +1,4 @@
-"""Implementation of a embedding-space continuous attack."""
+"""Implementation of a one-hot-input space continuous attack. Needs tuning."""
 
 import sys
 from dataclasses import dataclass
@@ -14,22 +14,23 @@ from .attack import Attack, AttackResult
 
 
 @dataclass
-class PGDConfig:
-    name: str = "pgd"
+class PGDOneHotConfig:
+    name: str = "pgd_one_hot"
     type: str = "continuous"
     placement: str = "command"
     generate_completions: Literal["all", "best", "last"] = "last"
     num_steps: int = 30
+    momentum: float = 0.5
     seed: int = 0
     batch_size: int = 2
     optim_str_init: str = ""
     epsilon: float = 100000.0
-    alpha: float = 0.005
+    alpha: float = 0.001
     generation_steps: int = 256
 
 
-class PGDAttack(Attack):
-    def __init__(self, config: PGDConfig):
+class PGDOneHotAttack(Attack):
+    def __init__(self, config: PGDOneHotConfig):
         super().__init__(config)
         self.batch_size = self.config.batch_size
         if self.config.placement == "suffix":
@@ -38,7 +39,6 @@ class PGDAttack(Attack):
             assert not self.config.optim_str_init
 
     def run(self, model: torch.nn.Module, tokenizer, dataset) -> AttackResult:
-        """The attack is in embedding"""
         num_examples = len(dataset)
 
         x: list = []
@@ -69,17 +69,19 @@ class PGDAttack(Attack):
         def attack(batch_size):
             losses = [[] for _ in range(num_examples)]
             completions = [[] for _ in range(num_examples)]
+            emb = model.get_input_embeddings().weight
             # Perform the actual attack
             for i in range(0, num_examples, batch_size):
-                original_embeddings = model.get_input_embeddings()(
-                    x[i : i + batch_size]
-                )
-                perturbed_embeddings = original_embeddings.clone().detach()
+                perturbed_one_hots = F.one_hot(x[i : i + batch_size], num_classes=model.config.vocab_size).to(model.device).to(model.dtype).detach()
+                perturbed_one_hots += (torch.rand_like(perturbed_one_hots) / 64000 - perturbed_one_hots) * attack_mask.unsqueeze(-1).to(perturbed_one_hots.device)
+                velocity = torch.zeros_like(perturbed_one_hots)
                 for _ in trange(self.config.num_steps, file=sys.stderr):
-                    perturbed_embeddings.requires_grad = True
+                    perturbed_one_hots.requires_grad_(True)
                     model.zero_grad()
+                    norm_pert_one_hots = (perturbed_one_hots / perturbed_one_hots.sum(dim=-1, keepdim=True))
+                    embeddings = norm_pert_one_hots @ emb
                     logits = model(
-                        inputs_embeds=perturbed_embeddings,
+                        inputs_embeds=embeddings,
                         attention_mask=attention_mask[i : i + batch_size],
                     ).logits
                     loss = F.cross_entropy(
@@ -88,50 +90,50 @@ class PGDAttack(Attack):
                         reduction="none",
                     )
                     loss = loss * target_masks[i : i + batch_size].view(-1)
-                    loss = loss.view(perturbed_embeddings.size(0), -1).mean(dim=1)
+                    loss = loss.view(embeddings.size(0), -1).mean(dim=1)
                     loss.mean().backward()
                     for j, l in enumerate(loss.detach().tolist()):
                         losses[i + j].append(l)
 
                     with torch.no_grad():
-                        perturbed_embeddings = (
-                            perturbed_embeddings
-                            - self.config.alpha
-                            * perturbed_embeddings.grad.sign()
-                            * attack_masks[i : i + batch_size, ..., None]
-                        )
-                        delta = self.project_l2(
-                            perturbed_embeddings - original_embeddings
-                        )
-                        perturbed_embeddings = (original_embeddings + delta).detach()
+                        grad = perturbed_one_hots.grad
+                        velocity = self.config.momentum * velocity + grad.sign() * attack_mask.unsqueeze(-1).to(perturbed_one_hots.device)
+                        perturbed_one_hots = perturbed_one_hots - self.config.alpha * velocity
+                        perturbed_one_hots = torch.clamp(perturbed_one_hots, 0)
 
                     if self.config.generate_completions == "all":
                         # Get completions right away
+                        norm_pert_one_hots = (perturbed_one_hots / perturbed_one_hots.sum(dim=-1, keepdim=True))
+                        embeddings = norm_pert_one_hots @ emb
                         completion = self.get_completions(
                             model,
                             tokenizer,
-                            perturbed_embeddings,
+                            embeddings,
                             attack_masks[i : i + batch_size],
                             self.config.generation_steps,
                         )
                         for j, c in enumerate(completion):
                             completions[i + j].append(c)
                     elif self.config.generate_completions == "best":
+                        norm_pert_one_hots = (perturbed_one_hots / perturbed_one_hots.sum(dim=-1, keepdim=True))
+                        embeddings = norm_pert_one_hots @ emb
                         for j in range(batch_size):
                             if losses[i + j][-1] == min(losses[i + j]):
                                 completion = self.get_completions(
                                     model,
                                     tokenizer,
-                                    perturbed_embeddings[j : j + 1],
+                                    embeddings[j : j + 1],
                                     attack_masks[i + j : i + j + 1],
                                     self.config.generation_steps,
                                 )
                                 completions[i + j] = [completion[0]]
                 if self.config.generate_completions == "last":
+                    norm_pert_one_hots = (perturbed_one_hots / perturbed_one_hots.sum(dim=-1, keepdim=True))
+                    embeddings = norm_pert_one_hots @ emb
                     completion = self.get_completions(
                         model,
                         tokenizer,
-                        perturbed_embeddings,
+                        embeddings,
                         target_masks[i : i + batch_size],
                         self.config.generation_steps,
                     )

@@ -38,6 +38,14 @@ HuggingFaceH4/zephyr-7b-beta:
   attn_implementation: null
   compile: False
   dtype: int8
+meta-llama/Llama-2-7b-chat-hf:
+  id: meta-llama/Llama-2-7b-chat-hf
+  tokenizer_id: meta-llama/Llama-2-7b-chat-hf
+  short_name: Llama
+  developer_name: Meta
+  attn_implementation: null
+  compile: False
+  dtype: int8
 ContinuousAT/Llama-2-7B-CAT:
   id: ContinuousAT/Llama-2-7B-CAT
   tokenizer_id: meta-llama/Llama-2-7b-chat-hf
@@ -50,6 +58,31 @@ ContinuousAT/Zephyr-CAT:
   id: ContinuousAT/Zephyr-CAT
   tokenizer_id: HuggingFaceH4/zephyr-7b-beta
   short_name: Zephyr
+  developer_name: ContinuousAT
+  attn_implementation: null
+  compile: False
+  dtype: int8
+ContinuousAT/Phi-CAT:
+  id: ContinuousAT/Phi-CAT
+  tokenizer_id: microsoft/Phi-3-mini-4k-instruct
+  short_name: Phi
+  developer_name: ContinuousAT
+  attn_implementation: null
+  compile: False
+  dtype: int8
+microsoft/Phi-3-mini-4k-instruct:
+  id: microsoft/Phi-3-mini-4k-instruct
+  tokenizer_id: microsoft/Phi-3-mini-4k-instruct
+  short_name: Phi
+  developer_name: ContinuousAT
+  attn_implementation: null
+  compile: False
+  dtype: int8
+
+cais/zephyr_7b_r2d2:
+  id: cais/zephyr_7b_r2d2
+  tokenizer_id: cais/zephyr_7b_r2d2
+  short_name: R2D2
   developer_name: ContinuousAT
   attn_implementation: null
   compile: False
