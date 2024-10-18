@@ -71,7 +71,7 @@ def get_batched_completions(
             torch.cat([torch.zeros(pl["padding"]), torch.arange(pl["generation"])])
             for pl in lengths
         ]
-    ).to(model.device)
+    ).long().to(model.device)
     tokens = []
     next_token_idx = embeddings.size(1)
     for i in range(max_new_tokens):
