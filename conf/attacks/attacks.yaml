@@ -9,7 +9,7 @@ pgd:
   optim_str_init: "x x x x x x x x x x x x x x x x x x x x"
   epsilon: 100000.
   alpha: 0.001
-  generation_steps: 256
+  max_new_tokens: 256
 pgd_one_hot:
   name: pgd_one_hot
   type: continuous
@@ -22,7 +22,7 @@ pgd_one_hot:
   epsilon: 100000.
   momentum: 0.5
   alpha: 0.001
-  generation_steps: 256
+  max_new_tokens: 256
 ample_gcg:
   name: ample_gcg
   type: discrete
@@ -48,7 +48,7 @@ ample_gcg:
       diversity_penalty: 1.0
   target_lm:
     batch_size: 24
-    generation_steps: 256
+    max_new_tokens: 256
 gcg:
   name: gcg
   type: discrete
@@ -71,7 +71,7 @@ gcg:
   filter_ids: True
   add_space_before_target: False
   verbosity: WARNING
-  generation_steps: 256
+  max_new_tokens: 256
 autodan:
   name: autodan
   type: discrete
@@ -87,7 +87,7 @@ autodan:
   num_points: 5
   mutation: 0.01
   mutate_model_id: null
-  generation_steps: 256 # have to implement this
+  max_new_tokens: 256 # have to implement this
 direct:
   name: direct
   type: discrete
@@ -96,4 +96,33 @@ direct:
   num_steps: 1
   seed: 0
   batch_size: 4
-  generation_steps: 256
+  max_new_tokens: 256
+pair:
+  name: pair
+  type: discrete
+  placement: multi-turn
+  generate_completions: all
+  num_streams: 1
+  keep_last_num: 3
+  seed: 0
+  num_steps: 20
+  attack_model:
+    id: lmsys/vicuna-13b-v1.5
+    tokenizer_id: lmsys/vicuna-13b-v1.5
+    dtype: bfloat16
+    compile: false
+    short_name: vicuna
+    developer_name: lmsys
+    max_attempts: 5
+    max_new_tokens: 512
+    temperature: 1
+    chat_template: vicuna
+    top_p: 0.9
+  target_model:
+    max_new_tokens: 256
+    temperature: 0
+    top_p: 1
+  judge_model:
+    id: cais/HarmBench-Llama-2-13b-cls
+    max_new_tokens: 256
+

@@ -26,7 +26,7 @@ class PGDConfig:
     optim_str_init: str = ""
     epsilon: float = 100000.0
     alpha: float = 0.005
-    generation_steps: int = 256
+    max_new_tokens: int = 256
 
 
 class PGDAttack(Attack):
@@ -151,7 +151,7 @@ class PGDAttack(Attack):
                         model,
                         tokenizer,
                         embedding_list=embedding_list,
-                        max_new_tokens=self.config.generation_steps,
+                        max_new_tokens=self.config.max_new_tokens,
                     )
                     for j, c in enumerate(completion):
                         completions[i + j].append(c)
@@ -166,7 +166,7 @@ class PGDAttack(Attack):
                                 model,
                                 tokenizer,
                                 embedding_list=embedding_list,
-                                max_new_tokens=self.config.generation_steps,
+                                max_new_tokens=self.config.max_new_tokens,
                             )
                             completions[i + j] = [completion[0]]
             if self.config.generate_completions == "last":
@@ -178,7 +178,7 @@ class PGDAttack(Attack):
                     model,
                     tokenizer,
                     embedding_list=embedding_list,
-                    max_new_tokens=self.config.generation_steps,
+                    max_new_tokens=self.config.max_new_tokens,
                 )
                 for j, c in enumerate(completion):
                     completions[i + j].append(c)

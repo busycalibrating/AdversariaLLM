@@ -75,10 +75,9 @@ class AmpleGCGAttack(Attack):
         for i in trange(0, len(attacks), batch_size, desc="Target Model"):
             token_list = [prepare_tokens(
                 tokenizer,
-                prompt["content"],
-                "ZZZZZ",  #  need dummy target (probably)
+                prompt=prompt["content"],
+                target="ZZZZZ",  #  need dummy target (probably)
                 attack=attack,
-                placement="suffix",
             ) for attack in attacks[i : i + batch_size]]
             token_list = [
                 torch.cat([a, b, c, d], dim=0) for a, b, c, d, _ in token_list
@@ -87,8 +86,7 @@ class AmpleGCGAttack(Attack):
                 model,
                 tokenizer,
                 token_list=token_list,
-                max_new_tokens=self.config.target_lm.generation_steps,
-                return_tokens=False,
+                max_new_tokens=self.config.target_lm.max_new_tokens,
             )
             outputs.extend(output)
         return outputs
@@ -98,10 +96,9 @@ class AmpleGCGAttack(Attack):
         for i in trange(0, len(attacks), batch_size, desc="Target Model"):
             token_list = [prepare_tokens(
                 tokenizer,
-                prompt["content"],
-                "ZZZZZ",  # need dummy target (probably)
+                prompt=prompt["content"],
+                target="ZZZZZ",  # need dummy target (probably)
                 attack=attack,
-                placement="suffix",
             ) for attack in attacks[i : i + batch_size]]
             target_lengths = [e.size(0) for a, b, c, d, e in token_list]
             token_list = [torch.cat(t, dim=0) for t in token_list]

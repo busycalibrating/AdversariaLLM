@@ -38,7 +38,7 @@ class DirectAttack(Attack):
                 model,
                 tokenizer,
                 token_list=[torch.cat([a, b, c, d], dim=0) for a,b,c,d,e in chunk],
-                max_new_tokens=self.config.generation_steps,
+                max_new_tokens=self.config.max_new_tokens,
             )
             token_list = [torch.cat([a, b, c, d, e], dim=0) for a,b,c,d,e in chunk]
             targets = [t.roll(-1, 0) for t in token_list]

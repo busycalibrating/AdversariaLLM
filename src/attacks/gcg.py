@@ -147,6 +147,7 @@ class GCGAttack(Attack):
             if self.config.allow_non_ascii
             else get_nonascii_toks(tokenizer, device=model.device)
         )
+        print(tokenizer.vocab_size, model.get_input_embeddings().weight.shape)
 
         results = AttackResult([], [], [], [])
         for msg, target in dataset:
@@ -315,7 +316,7 @@ class GCGAttack(Attack):
                 model,
                 tokenizer,
                 token_list=token_list,
-                max_new_tokens=getattr(self.config, "generation_steps", 512),
+                max_new_tokens=getattr(self.config, "max_new_tokens", 512),
                 return_tokens=False,
             )
             results.losses.append(losses)

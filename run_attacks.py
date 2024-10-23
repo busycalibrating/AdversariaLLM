@@ -14,7 +14,6 @@ from src.datasets import Dataset
 from src.errors import print_exceptions
 from src.io_utils import load_model_and_tokenizer, log_attack
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.use_deterministic_algorithms(True, warn_only=True)  # determinism
 torch.backends.cuda.matmul.allow_tf32 = True
 

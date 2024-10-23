@@ -10,8 +10,6 @@ from omegaconf import OmegaConf
 
 from src.attacks import AttackResult
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 def load_model_and_tokenizer(model_path, model_params):
     gc.collect()
@@ -40,31 +38,41 @@ def load_model_and_tokenizer(model_path, model_params):
                 model_path,
                 torch_dtype=getattr(torch, model_params.dtype),
                 trust_remote_code=True,
-            )
-            .to(device)
-            .eval()
+                low_cpu_mem_usage=True,
+                device_map="auto",
+            ).eval()
         )
     if model_params.compile:
         model = torch.compile(model)
 
-
     model.config.short_name = model_params.short_name
     model.config.developer_name = model_params.developer_name
     tokenizer = AutoTokenizer.from_pretrained(model_params.tokenizer_id, trust_remote_code=True)
+    match model_path.lower():
+        case path if "oasst-sft-6-llama-30b" in path:
+            tokenizer.bos_token_id = 1
+            tokenizer.unk_token_id = 0
+        case path if "guanaco" in path:
+            tokenizer.eos_token_id = 2
+            tokenizer.unk_token_id = 0
+        case path if "llama-2" in path:
+            tokenizer.pad_token = tokenizer.unk_token
+        case path if "vicuna" in path:
+            tokenizer.pad_token = tokenizer.eos_token
 
-    if "oasst-sft-6-llama-30b" in model_path:
-        tokenizer.bos_token_id = 1
-        tokenizer.unk_token_id = 0
-    if "guanaco" in model_path:
-        tokenizer.eos_token_id = 2
-        tokenizer.unk_token_id = 0
-    if "llama-2" in model_path:
-        tokenizer.pad_token = tokenizer.unk_token
+    if model_params.chat_template is not None:
+        tokenizer.chat_template = load_chat_template(model_params.chat_template)
+
     tokenizer.padding_side = "left"
     if not tokenizer.pad_token:
         tokenizer.pad_token = tokenizer.eos_token
-
     return model, tokenizer
+
+
+def load_chat_template(template_name):
+    chat_template = open(f'/nfs/staff-ssd/beyer/llm-quick-check/chat_templates/chat_templates/{template_name}.jinja').read()
+    chat_template = chat_template.replace('    ', '').replace('\n', '')
+    return chat_template
 
 
 def log_attack(run_config, result: AttackResult, log_file: str):

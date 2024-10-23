@@ -57,6 +57,10 @@ class Attack:
                 from .direct import DirectAttack
 
                 return DirectAttack
+            case "pair":
+                from .pair import PAIRAttack
+
+                return PAIRAttack
             case _:
                 raise ValueError(f"Unknown attack: {name}")
 
