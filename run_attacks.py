@@ -69,9 +69,13 @@ def main(cfg: DictConfig) -> None:
                     attack_params,
                     cfg,
                 )
-                log_attack(
-                    run_config, results, cfg.log_file + f"{date_time_string}/run.json"
-                )
+
+                if cfg.auto_log_subdirs:
+                    date_time_string = datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
+                    log_dir = cfg.log_file + f"/{model_name.replace('/','-')}/run_{dataset.get_range_str()}___{date_time_string}.json"
+                else:
+                    log_dir = cfg.log_file + f"/{date_time_string}/run.json"
+                log_attack(run_config, results, log_dir)
 
 
 if __name__ == "__main__":

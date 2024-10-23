@@ -6,6 +6,6 @@ python run_attacks.py --config-name=config_dd -m \
     ++datasets.adv_behaviors.idx="range(0,300,25)" \
     ++datasets.adv_behaviors.batch=25 \
     ++attack_name=ample_gcg \
-    ++hydra.launcher.timeout_min=500
+    ++hydra.launcher.timeout_min=1440
 
 # python run_attacks.py -m ++model_name=google/gemma-2-2b-it ++dataset_name=adv_behaviors ++datasets.adv_behaviors.idx="range(0,300, 20)" ++datasets.adv_behaviors.batch=20 ++attack_name=ample_gcg ++hydra.launcher.timeout_min=500

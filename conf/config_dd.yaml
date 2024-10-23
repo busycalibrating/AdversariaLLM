@@ -20,7 +20,8 @@ hydra:
 
 dtype: float16
 name: testing
-log_file: ${oc.env:SCRATCH}/2024/llm-quick-check/outputs/
+log_file: ${oc.env:SCRATCH}/2024/llm-quick-check/outputs/sweep
+auto_log_subdirs: true
 
 # overrides for parallelism
 attack_name: null

@@ -64,6 +64,7 @@ class AdvBehaviorsDataset(Dataset):
             selected_idx = list(range(config.idx, min(config.idx + config.batch, len(self.messages))))
         else:
             selected_idx = config.idx
+        self.selected_idx = selected_idx
 
         # shuffle
         torch.manual_seed(config.seed)
@@ -78,6 +79,17 @@ class AdvBehaviorsDataset(Dataset):
         # cut
         self.messages = self.messages.iloc[idx].reset_index(drop=True)
         self.targets = self.targets.iloc[idx].reset_index(drop=True)
+
+    def get_range_str(self) -> str:
+        if isinstance(self.selected_idx, int):
+            return f"{self.selected_idx}"
+        elif isinstance(self.selected_idx, Sequence):
+            # check if sequential
+            _sorted = sorted(self.selected_idx)
+            if not all(x2 - x1 == 1 for x1, x2 in zip(_sorted[:-1], _sorted[1:])):
+                return "<non-sequential>"
+            return f"{self.selected_idx[0]}-{self.selected_idx[-1]}"
+        return "<undefined>"
 
     def __len__(self):
         return len(self.messages)
@@ -97,6 +109,7 @@ class JBBBehaviorsConfig:
     name: str
     seed: int = 0
     idx: list[int]|int|None = None
+    batch: int|None = None
 
 
 class JBBBehaviorsDataset(Dataset):
@@ -104,15 +117,24 @@ class JBBBehaviorsDataset(Dataset):
         self.config = config
         dataset = jbb.read_dataset().as_dataframe()
 
+        if config.batch is not None:
+            raise NotImplementedError("Haven't tested batching here yet")
+            if isinstance(config.idx, Sequence):
+                raise ValueError("Cannot use config.batch with a sequence of indices")
+            selected_idx = list(range(config.idx, min(config.idx + config.batch, len(dataset))))
+        else:
+            selected_idx = config.idx
+        self.selected_idx = selected_idx
+
         # shuffle
         torch.manual_seed(config.seed)
         idx = torch.randperm(len(dataset))
-        if isinstance(config.idx, int):
-            idx = idx[config.idx:config.idx + 1]
-        elif isinstance(config.idx, Sequence):
-            idx = idx[config.idx]
-        elif config.idx is not None:
-            raise ValueError(f"Invalid idx: {config.idx}")
+        if isinstance(selected_idx, int):
+            idx = idx[selected_idx:config.idx + 1]
+        elif isinstance(selected_idx, Sequence):
+            idx = idx[selected_idx]
+        elif selected_idx is not None:
+            raise ValueError(f"Invalid idx: {selected_idx}")
         self.messages = dataset.Goal.iloc[idx].reset_index(drop=True)
         self.targets = dataset.Target.iloc[idx].reset_index(drop=True)
 
@@ -124,6 +146,18 @@ class JBBBehaviorsDataset(Dataset):
         message = {"role": "user", "content": msg}
         target: str = self.targets.iloc[idx]
         return message, target
+
+    def get_range_str(self) -> str:
+        return NotImplementedError("Not yet tested here")
+        if isinstance(self.selected_idx, int):
+            return f"{self.selected_idx}"
+        elif isinstance(self.selected_idx, Sequence):
+            # check if sequential
+            _sorted = sorted(self.selected_idx)
+            if not all(x2 - x1 == 1 for x1, x2 in zip(_sorted[:-1], _sorted[1:])):
+                return "<non-sequential>"
+            return f"{self.selected_idx[0]}-{self.selected_idx[-1]}"
+        return "<undefined>"
 
 
 if __name__ == "__main__":
