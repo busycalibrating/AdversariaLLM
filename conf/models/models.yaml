@@ -12,7 +12,7 @@ mistralai/Mistral-7B-Instruct-v0.3:
   short_name: Mistral
   developer_name: Mistral AI
   compile: False
-  dtype: int8
+  dtype: bfloat16
   chat_template: mistral-instruct
 meta-llama/Meta-Llama-3.1-8B-Instruct:
   id: meta-llama/Meta-Llama-3.1-8B-Instruct
@@ -20,7 +20,7 @@ meta-llama/Meta-Llama-3.1-8B-Instruct:
   short_name: Llama
   developer_name: Meta
   compile: False
-  dtype: int8
+  dtype: bfloat16
   chat_template: llama-3-instruct
 qwen/Qwen2-7B-Instruct:
   id: qwen/Qwen2-7B-Instruct
@@ -28,7 +28,7 @@ qwen/Qwen2-7B-Instruct:
   short_name: Qwen2
   developer_name: Alibaba
   compile: False
-  dtype: int8
+  dtype: bfloat16
   chat_template: null
 HuggingFaceH4/zephyr-7b-beta:
   id: HuggingFaceH4/zephyr-7b-beta
@@ -36,7 +36,7 @@ HuggingFaceH4/zephyr-7b-beta:
   short_name: Zephyr
   developer_name: Hugging Face
   compile: False
-  dtype: int8
+  dtype: bfloat16
   chat_template: zephyr
 meta-llama/Llama-2-7b-chat-hf:
   id: meta-llama/Llama-2-7b-chat-hf
@@ -44,7 +44,7 @@ meta-llama/Llama-2-7b-chat-hf:
   short_name: Llama
   developer_name: Meta
   compile: False
-  dtype: int8
+  dtype: bfloat16
   chat_template: llama-2-chat
 ContinuousAT/Llama-2-7B-CAT:
   id: ContinuousAT/Llama-2-7B-CAT
@@ -53,7 +53,7 @@ ContinuousAT/Llama-2-7B-CAT:
   developer_name: ContinuousAT
   attn_implementation: null
   compile: False
-  dtype: int8
+  dtype: bfloat16
   chat_template: llama-2-chat
 ContinuousAT/Zephyr-CAT:
   id: ContinuousAT/Zephyr-CAT
@@ -62,7 +62,7 @@ ContinuousAT/Zephyr-CAT:
   developer_name: ContinuousAT
   attn_implementation: null
   compile: False
-  dtype: int8
+  dtype: bfloat16
   chat_template: zephyr
 ContinuousAT/Phi-CAT:
   id: ContinuousAT/Phi-CAT
@@ -70,7 +70,7 @@ ContinuousAT/Phi-CAT:
   short_name: Phi
   developer_name: ContinuousAT
   compile: False
-  dtype: int8
+  dtype: bfloat16
   chat_template: phi-3
 microsoft/Phi-3-mini-4k-instruct:
   id: microsoft/Phi-3-mini-4k-instruct
@@ -78,7 +78,7 @@ microsoft/Phi-3-mini-4k-instruct:
   short_name: Phi
   developer_name: ContinuousAT
   compile: False
-  dtype: int8
+  dtype: bfloat16
   chat_template: phi3
 cais/zephyr_7b_r2d2:
   id: cais/zephyr_7b_r2d2
@@ -86,7 +86,7 @@ cais/zephyr_7b_r2d2:
   short_name: R2D2
   developer_name: ContinuousAT
   compile: False
-  dtype: int8
+  dtype: bfloat16
   chat_template: zephyr
 GraySwanAI/Llama-3-8B-Instruct-RR:
   id: GraySwanAI/Llama-3-8B-Instruct-RR
@@ -94,7 +94,7 @@ GraySwanAI/Llama-3-8B-Instruct-RR:
   short_name: Llama
   developer_name: GraySwanAI
   compile: False
-  dtype: int8
+  dtype: bfloat16
   chat_template: llama-3-instruct
 GraySwanAI/Mistral-7B-Instruct-RR:
   id: GraySwanAI/Mistral-7B-Instruct-RR
@@ -102,7 +102,7 @@ GraySwanAI/Mistral-7B-Instruct-RR:
   short_name: Mistral
   developer_name: GraySwanAI
   compile: False
-  dtype: int8
+  dtype: bfloat16
   chat_template: mistral-instruct
 lmsys/vicuna-13b-v1.5:
   id: lmsys/vicuna-13b-v1.5
