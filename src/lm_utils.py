@@ -1,8 +1,11 @@
+import logging
+import random
+from typing import Literal
+
 import torch
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
-import random
-from typing import Literal
+from transformers import DynamicCache
 
 
 @torch.no_grad
@@ -14,6 +17,7 @@ def get_batched_completions(
     max_new_tokens: int = 256,
     return_tokens=False,
     padding_side='right',
+    use_cache=False,
 ) -> list[str] | torch.Tensor:
     """
     Generate completions for multiple prompts in a single batch.
@@ -21,9 +25,9 @@ def get_batched_completions(
     Heavily tested across models to be close to individual generations.
     This is far from trivial due to various padding (left/right) and masking issues.
     The final function is still not identical to individual generations, but it is close.
-    The reason for this is that attention masks typically do not use -inf for masked tokens,
-    but instead use values like -65504 for float16. This can lead to small differences in the
-    final logits and thus the generated tokens.
+    The reason for this is probably that attention masks typically don't use -inf for
+    masked tokens, but instead have values like -65504 for float16.
+    This can lead to small differences in the final logits and thus the generated tokens.
     We are much closer to individual generations than HF model.generate, which often
     fails in mysterious ways for LLama & Qwen models.
     Number of generations that are the same as single-batch:
@@ -39,7 +43,7 @@ def get_batched_completions(
         mistralai/Mistral-7B-Instruct-v0.3        83/100         79/100
         qwen/Qwen2-7B-Instruct                    78/100         19/100
         ---------------------------------------------------------------
-        Total                                    809/1000      579/1000
+        Total                                   809/1000       579/1000
 
     Args:
         model: A pretrained model.
@@ -52,7 +56,7 @@ def get_batched_completions(
     Returns:
         A list of completions for each prompt.
     """
-    if embedding_list is  None and token_list is None:
+    if embedding_list is None and token_list is None:
         raise ValueError("Either embedding_list or token_list must be provided.")
     if embedding_list is not None:
         assert all(e.ndim == 2 for e in embedding_list), "Embeddings must be 2D."
@@ -63,10 +67,16 @@ def get_batched_completions(
         embedding_list = [
             model.get_input_embeddings()(t.unsqueeze(0))[0] for t in token_list
         ]
+    # TODO: Implement KV-caching for Gemma
+    if use_cache and model.name_or_path == "google/gemma-2-2b-it":
+        logging.warning("KV-cache not implemented for Gemma 2. Disabling cache.")
+        use_cache = False
 
     B = len(embedding_list)
     tokens = []
-    if padding_side == 'left':
+    if padding_side == "left":
+        if use_cache:
+            raise NotImplementedError("KV-cache not implemented for left padding.")
         # Add left padding
         embeddings = pad_sequence(
             [e.flip(0) for e in embedding_list], batch_first=True, padding_value=0
@@ -105,21 +115,56 @@ def get_batched_completions(
             )
             tokens.append(next_tokens)
             next_token_idx += 1
-    elif padding_side == 'right':
+    elif padding_side == "right":
         # Add right padding
         embeddings = pad_sequence(
             [e for e in embedding_list], batch_first=True, padding_value=0
         )
         padded_embeddings = F.pad(embeddings, (0, 0, 0, max_new_tokens))
         next_token_idx = torch.tensor([e.size(0) for e in embedding_list])
-        for i in range(max_new_tokens):
-            outputs = model(inputs_embeds=padded_embeddings[:, :next_token_idx.max()])
-            next_tokens = outputs.logits.argmax(dim=-1)[torch.arange(B), next_token_idx-1]
-            padded_embeddings[torch.arange(B), next_token_idx] = (
-                model.get_input_embeddings()(next_tokens).detach()
-            )
-            tokens.append(next_tokens)
-            next_token_idx += 1
+
+        if use_cache:
+            # Fill prefix cache
+            past_key_values = DynamicCache()
+            if next_token_idx.min() > 1:
+                model(
+                    inputs_embeds=padded_embeddings[:, : next_token_idx.min() - 1],
+                    past_key_values=past_key_values,
+                    use_cache=use_cache,
+                )
+            for i in range(max_new_tokens):
+                # Caching with right padding is a bit tricky:
+                # We have to feed more than one token at each forward pass :(.
+                # Instead, we feed a 'window' from the last token of the shortest prompt
+                # to the last token of the longest prompt.
+                # This means that caching works best if all sequences are of similar length.
+                outputs = model(
+                    inputs_embeds=padded_embeddings[:, next_token_idx.min() - 1 : next_token_idx.max()],
+                    past_key_values=past_key_values,
+                    use_cache=use_cache,
+                )
+                next_tokens = outputs.logits.argmax(dim=-1)[
+                    torch.arange(B), next_token_idx - next_token_idx.min()
+                ]
+                padded_embeddings[torch.arange(B), next_token_idx] = (
+                    model.get_input_embeddings()(next_tokens).detach()
+                )
+                # have to manually crop the past_key_values to the correct length
+                # since we only add a single step at a time
+                for j in range(len(past_key_values.key_cache)):
+                    past_key_values.key_cache[j] = past_key_values.key_cache[j][..., : next_token_idx.min(), :]
+                    past_key_values.value_cache[j] = past_key_values.value_cache[j][..., : next_token_idx.min(), :]
+                tokens.append(next_tokens)
+                next_token_idx += 1
+        else:
+            for i in range(max_new_tokens):
+                outputs = model(inputs_embeds=padded_embeddings[:, :next_token_idx.max()])
+                next_tokens = outputs.logits.argmax(dim=-1)[torch.arange(B), next_token_idx - 1]
+                padded_embeddings[torch.arange(B), next_token_idx] = (
+                    model.get_input_embeddings()(next_tokens).detach()
+                )
+                tokens.append(next_tokens)
+                next_token_idx += 1
     else:
         raise ValueError(f"Unknown padding_side: {padding_side}")
 

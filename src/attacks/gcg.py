@@ -14,7 +14,7 @@ Extensively tested against a variety of models, including:
     mistralai/Mistral-7B-Instruct-v0.3
     qwen/Qwen2-7B-Instruct
 
-Fixes several issues with nanoGCG, mostly re. Llama-2.
+Fixes several issues in nanoGCG, mostly re. Llama-2 & tokenization
 """
 
 import gc
@@ -314,7 +314,7 @@ class GCGAttack(Attack):
                 model,
                 tokenizer,
                 token_list=token_list,
-                max_new_tokens=getattr(self.config, "max_new_tokens", 512),
+                max_new_tokens=self.config.max_new_tokens,
                 return_tokens=False,
             )
             results.losses.append(losses)
