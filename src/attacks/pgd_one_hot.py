@@ -83,9 +83,8 @@ class PGDOneHotAttack(Attack):
             target_masks.append(target_mask)
 
         x = pad_sequence(x, batch_first=True, padding_value=tokenizer.pad_token_id)
-        x= x.to(model.device)
-        target_masks = pad_sequence(target_masks, batch_first=True).to(model.device)
-        attack_masks = pad_sequence(attack_masks, batch_first=True).to(model.device)
+        target_masks = pad_sequence(target_masks, batch_first=True)
+        attack_masks = pad_sequence(attack_masks, batch_first=True)
         attention_mask = (x != tokenizer.pad_token_id).long()
 
         y = x.clone()
@@ -106,11 +105,11 @@ class PGDOneHotAttack(Attack):
         emb = model.get_input_embeddings().weight
         # Perform the actual attack
         for i in range(0, num_examples, batch_size):
-            x_batch = x[i : i + batch_size]
-            y_batch = y[i : i + batch_size]
-            attention_mask_batch = attention_mask[i : i + batch_size]
-            attack_masks_batch = attack_masks[i : i + batch_size]
-            target_masks_batch = target_masks[i : i + batch_size]
+            x_batch = x[i : i + batch_size].to(model.device)
+            y_batch = y[i : i + batch_size].to(model.device)
+            attention_mask_batch = attention_mask[i : i + batch_size].to(model.device)
+            attack_masks_batch = attack_masks[i : i + batch_size].to(model.device)
+            target_masks_batch = target_masks[i : i + batch_size].to(model.device)
             perturbed_one_hots = (
                 F.one_hot(
                     x_batch, num_classes=model.config.vocab_size
@@ -123,7 +122,7 @@ class PGDOneHotAttack(Attack):
                 torch.rand_like(perturbed_one_hots) / perturbed_one_hots.size(-1) - perturbed_one_hots
             ) * attack_masks_batch[...,None]
             velocity = torch.zeros_like(perturbed_one_hots)
-            for _ in trange(self.config.num_steps, file=sys.stderr):
+            for _ in trange(self.config.num_steps):
                 perturbed_one_hots.requires_grad_(True)
                 model.zero_grad()
                 norm_pert_one_hots = perturbed_one_hots / perturbed_one_hots.sum(
@@ -162,7 +161,7 @@ class PGDOneHotAttack(Attack):
                         perturbed_one_hots / perturbed_one_hots.sum(dim=-1, keepdim=True)
                     ) @ emb
                     embedding_list = [
-                        pe[~(tm.bool().roll(1, 0))]
+                        pe[~(tm.roll(1, 0).cumsum(0).bool())]
                         for pe, tm in zip(embeddings, target_masks_batch)
                     ]
                     completion = get_batched_completions(
@@ -181,7 +180,7 @@ class PGDOneHotAttack(Attack):
                                 / perturbed_one_hots[j:j + 1].sum(dim=-1, keepdim=True)
                             ) @ emb
                             embedding_list = [
-                                pe[~(tm.bool().roll(1, 0))]
+                                pe[~(tm.roll(1, 0).cumsum(0).bool())]
                                 for pe, tm in zip(embeddings, target_masks_batch[j:j+1])
                             ]
                             completion = get_batched_completions(
@@ -196,7 +195,7 @@ class PGDOneHotAttack(Attack):
                     dim=-1, keepdim=True
                 ) @ emb
                 embedding_list = [
-                    pe[~(tm.bool().roll(1, 0))]
+                    pe[~(tm.roll(1, 0).cumsum(0).bool())]
                     for pe, tm in zip(embeddings, target_masks_batch)
                 ]
                 completion = get_batched_completions(

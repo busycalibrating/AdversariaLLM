@@ -81,9 +81,9 @@ class PGDAttack(Attack):
 
         x = pad_sequence(
             x, batch_first=True, padding_value=tokenizer.pad_token_id
-        ).to(model.device)
-        target_masks = pad_sequence(target_masks, batch_first=True).to(model.device)
-        attack_masks = pad_sequence(attack_masks, batch_first=True).to(model.device)
+        )
+        target_masks = pad_sequence(target_masks, batch_first=True)
+        attack_masks = pad_sequence(attack_masks, batch_first=True)
         attention_mask = (x != tokenizer.pad_token_id).long()
 
         y = x.clone()
@@ -104,15 +104,15 @@ class PGDAttack(Attack):
         completions = [[] for _ in range(num_examples)]
         # Perform the actual attack
         for i in range(0, num_examples, batch_size):
-            x_batch = x[i : i + batch_size]
-            y_batch = y[i : i + batch_size]
-            attention_mask_batch = attention_mask[i : i + batch_size]
-            attack_masks_batch = attack_masks[i : i + batch_size]
-            target_masks_batch = target_masks[i : i + batch_size]
+            x_batch = x[i : i + batch_size].to(model.device)
+            y_batch = y[i : i + batch_size].to(model.device)
+            attention_mask_batch = attention_mask[i : i + batch_size].to(model.device)
+            attack_masks_batch = attack_masks[i : i + batch_size].to(model.device)
+            target_masks_batch = target_masks[i : i + batch_size].to(model.device)
 
             original_embeddings = model.get_input_embeddings()(x_batch)
             perturbed_embeddings = original_embeddings.clone().detach()
-            for _ in trange(self.config.num_steps, file=sys.stderr):
+            for _ in trange(self.config.num_steps):
                 perturbed_embeddings.requires_grad = True
                 model.zero_grad()
                 logits = model(
@@ -124,8 +124,9 @@ class PGDAttack(Attack):
                     y_batch.view(-1),
                     reduction="none",
                 )
-                loss = loss * target_masks_batch.view(-1)
-                loss = loss.view(perturbed_embeddings.size(0), -1).mean(dim=1)
+                loss = loss.view(perturbed_embeddings.size(0), -1)
+                loss = loss * target_masks_batch
+                loss = loss.mean(dim=1)
                 loss.mean().backward()
                 for j, l in enumerate(loss.detach().tolist()):
                     losses[i + j].append(l)
@@ -144,7 +145,7 @@ class PGDAttack(Attack):
 
                 if self.config.generate_completions == "all":
                     embedding_list = [
-                        pe[~(tm.bool().roll(1, 0))]
+                        pe[~(tm.roll(1, 0).cumsum(0).bool())]
                         for pe, tm in zip(perturbed_embeddings, target_masks_batch)
                     ]
                     completion = get_batched_completions(
@@ -159,7 +160,7 @@ class PGDAttack(Attack):
                     for j in range(batch_size):
                         if losses[i + j][-1] == min(losses[i + j]):
                             embedding_list = [
-                                pe[~(tm.bool().roll(1, 0))]
+                                pe[~(tm.roll(1, 0).cumsum(0).bool())]
                                 for pe, tm in zip(perturbed_embeddings[j:j+1], target_masks_batch[j:j+1])
                             ]
                             completion = get_batched_completions(
@@ -171,7 +172,7 @@ class PGDAttack(Attack):
                             completions[i + j] = [completion[0]]
             if self.config.generate_completions == "last":
                 embedding_list = [
-                    pe[~(tm.bool().roll(1, 0))]
+                    pe[~(tm.roll(1, 0).cumsum(0).bool())]
                     for pe, tm in zip(perturbed_embeddings, target_masks_batch)
                 ]
                 completion = get_batched_completions(
@@ -179,6 +180,7 @@ class PGDAttack(Attack):
                     tokenizer,
                     embedding_list=embedding_list,
                     max_new_tokens=self.config.max_new_tokens,
+                    use_cache=False    # only marginal benefit from caching in this case
                 )
                 for j, c in enumerate(completion):
                     completions[i + j].append(c)
