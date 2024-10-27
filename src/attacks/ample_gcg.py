@@ -141,7 +141,7 @@ class PrompterModel(nn.Module):
         )
 
     def _prompterlm_run_batch(self, batch):
-        input_ids = self.tokenizer(batch, return_tensors="pt", padding=True)
+        input_ids = self.tokenizer(batch, return_tensors="pt", padding=True, truncation=True)
         input_ids = input_ids.to(self.model.device)
         # Does a beam search to generate multiple completions per prompt
         output = self.model.generate(**input_ids, generation_config=self.gen_config)

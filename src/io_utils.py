@@ -59,13 +59,14 @@ def load_model_and_tokenizer(model_path, model_params):
         case path if "guanaco" in path:
             tokenizer.eos_token_id = 2
             tokenizer.unk_token_id = 0
-        case path if "llama-2" in path:
-            tokenizer.pad_token = tokenizer.unk_token
         case path if "vicuna" in path:
             tokenizer.pad_token = tokenizer.eos_token
+        case path if "llama-2" in path:
+            tokenizer.pad_token = tokenizer.unk_token
+            tokenizer.model_max_length = 4096
         case path if "gemma-2" in path:
             tokenizer.model_max_length = 8192
-        case path if 'mistral-7b-instruct-v0.3' in path:
+        case path if 'mistralai/mistral-7b-instruct-v0.3' in path:
             tokenizer.model_max_length = 32768
         case path if 'zephyr' in path:
             tokenizer.model_max_length = 32768

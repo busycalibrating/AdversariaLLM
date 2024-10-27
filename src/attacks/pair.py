@@ -267,9 +267,7 @@ class AttackLM:
             full_prompt = tokenizer.apply_chat_template(
                 conv, add_generation_prompt=False, tokenize=False, continue_final_message=True
             )
-            while (len(tokenizer(full_prompt).input_ids) + self.max_new_tokens) > min(
-                tokenizer.model_max_length, 4096
-            ):
+            while (len(tokenizer(full_prompt).input_ids) + self.max_new_tokens) > tokenizer.model_max_length:
                 # maintain system message, remove user+assistant message pairs until we fit
                 # in context window
                 conv = conv[:1] + conv[3:]
