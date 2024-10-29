@@ -36,7 +36,7 @@ class AmpleGCGAttack(Attack):
     def __init__(self, config: AmpleGCGConfig):
         super().__init__(config)
 
-    @torch.no_grad()
+    @torch.no_grad
     def run(self, model: torch.nn.Module, tokenizer, dataset) -> AttackResult:
         results = AttackResult([], [], [], [])
         for msg, target in dataset:
@@ -94,6 +94,7 @@ class AmpleGCGAttack(Attack):
                 tokenizer,
                 token_list=token_list,
                 max_new_tokens=self.config.target_lm.max_new_tokens,
+                use_cache=True
             )
             outputs.extend(output)
         return outputs
