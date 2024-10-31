@@ -21,7 +21,7 @@ def get_batched_completions(
 ) -> list[str] | torch.Tensor:
     """
     Generate completions for multiple prompts in a single batch.
-    No KV-cache for now.
+    No KV-cache for left-padding yet.
     Heavily tested across models to be close to individual generations.
     This is far from trivial due to various padding (left/right) and masking issues.
     The final function is still not identical to individual generations, but it is close.
