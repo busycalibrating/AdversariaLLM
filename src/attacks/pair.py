@@ -190,6 +190,7 @@ class HuggingFace:
             eos_token_id=self.eos_token_ids,
             temperature=temperature if temperature > 0 else 1,
             top_p=top_p if temperature > 0 else 1,
+            pad_token_id=self.tokenizer.eos_token_id,
         )
 
         # If the model is not an encoder-decoder type, slice off the input tokens
@@ -258,7 +259,7 @@ class AttackLM:
 
         # Initalize the attack model's generated output to match format
         if len(convs_list[0]) == 1:  # just system message
-            init_message = """{\"improvement\": \"\",\"prompt\": \""""
+            init_message = """{\"improvement\": \"\", \"prompt\": \"\"\""""
         else:
             init_message = """{\"improvement\": \""""
 
@@ -280,7 +281,10 @@ class AttackLM:
             # Remove BOS token, will get added again later if necessary
             if tokenizer.bos_token and full_prompt.startswith(tokenizer.bos_token):
                 full_prompt = full_prompt.replace(tokenizer.bos_token, "", 1)
-
+            # Ensure tokenizer didn't add superfluous stuff at the end which would interfere with generation
+            if not full_prompt.endswith("\""):
+                idx = full_prompt[::-1].index("\"")
+                full_prompt = full_prompt[:-idx]
             full_prompts.append(full_prompt)
 
         for attempt in range(self.max_attempts):
@@ -296,11 +300,9 @@ class AttackLM:
             # Check for valid outputs and update the list
             new_indices_to_regenerate = []
             for i, full_output in enumerate(outputs_list):
+                attack_dict, json_str = extract_json(init_message + full_output)
+
                 orig_index = indices_to_regenerate[i]
-                full_output = init_message + full_output
-
-                attack_dict, json_str = extract_json(full_output)
-
                 if attack_dict is not None:
                     valid_outputs[orig_index] = attack_dict
                     # Update the conversation with valid generation

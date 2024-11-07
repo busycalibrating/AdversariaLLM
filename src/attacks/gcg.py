@@ -496,11 +496,7 @@ class GCGAttack(Attack):
                 all_loss.append(loss)
 
                 if self.config.early_stop:
-                    if torch.any(
-                        torch.all(
-                            torch.argmax(shift_logits, dim=-1) == shift_labels, dim=-1
-                        )
-                    ).item():
+                    if (shift_logits.argmax(-1) == shift_labels).all(-1).any().item():
                         self.stop_flag = True
 
                 del outputs

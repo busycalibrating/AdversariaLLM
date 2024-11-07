@@ -49,7 +49,7 @@ timeouts = {
     'autodan': 480,
     'gcg': 240,
     'pgd': 30,  # 2 min IRL
-    'human_jailbreaks': 100,
+    'human_jailbreaks': 120,
     'pgd_one_hot': 30,
     'ample_gcg': 120,
     'direct': 10,
@@ -77,6 +77,7 @@ paths = sorted(paths, reverse=True)
 runs = Parallel(n_jobs=16)(delayed(process_file)(path) for path in paths)
 attack_runs = [r for run in runs for r in run]
 existing = set()
+existing_judged = set()
 n_duplicates = 0
 
 attack_runs_new = []
@@ -89,6 +90,8 @@ for run in attack_runs:
         if prompt['content'] not in prompt_to_idx:
             continue
         key = (prompt_to_idx[prompt['content']], config['attack'], model)
+        if key not in existing_judged and 'successes_cais' in run:
+            existing_judged.add(key)
         if key not in existing:
             existing.add(key)
             attack_runs_new.append(run)
@@ -120,7 +123,7 @@ def get_runs(d, tgt_models, tgt_attacks):
 
 to_run = get_runs(d, tgt_models, tgt_attacks)
 
-max_idx = max(idx for idx, _, _ in to_run)
+max_idx = max((idx for idx, _, _ in to_run), default=args.prompt_idx or 0)
 
 def merge_tuples(tuples, idx=0):
     if isinstance(idx, list):
@@ -173,8 +176,10 @@ print(f'When completed, runs for the first {args.prompt_idx or max_idx-1} prompt
 # Initialize colorama
 init(autoreset=True)
 
-scheduled_runs_per_prompt = [sum(e[0]==i for e in to_run if 'vicuna' not in e[2]) for i in range(len(d))]
-completed_runs_per_prompt = [sum(e[0]==i for e in existing if 'vicuna' not in e[2]) for i in range(len(d))]
+n_scheduled = [sum(e[0]==i for e in to_run if 'vicuna' not in e[2]) for i in range(len(d))]
+n_judged = [sum(e[0]==i for e in existing_judged if 'vicuna' not in e[2]) for i in range(len(d))]
+n_completed = [sum(e[0]==i for e in existing if 'vicuna' not in e[2])-n_judged[i] for i in range(len(d))]
+
 
 # Define bar characters and colors
 scheduled_bar_char = "█"  # Bar for scheduled runs
@@ -182,22 +187,34 @@ completed_bar_char = "▓"  # Bar for completed runs
 max_bar_width = 1 # Maximum bar width for visual simplicity
 
 # Function to plot bars for scheduled and completed runs
-def ascii_bar_chart(scheduled_data, completed_data):
-    print(f"{Fore.WHITE}            {Fore.GREEN}R E M A I N I N G                             {Fore.CYAN}S C H E D U L E D                            {Fore.RED}M I S S I N G")
-    for idx, (scheduled_runs, completed_runs) in enumerate(zip(scheduled_data, completed_data)):
+def ascii_bar_chart(scheduled_data, completed_data, judged_data):
+    print(f"{Fore.WHITE}            {Fore.GREEN}C O M P L E T E D                             {Fore.CYAN}S C H E D U L E D                            {Fore.RED}M I S S I N G")
+    n_judged_total = 0
+    n_completed_total = 0
+    n_scheduled_total = 0
+    n_remaining_total = 0
+    for idx, (scheduled_runs, completed_runs, judged_runs) in enumerate(zip(scheduled_data, completed_data, judged_data)):
         # Scale the bar widths
         completed_width = int(completed_runs * max_bar_width)
         scheduled_width = int(scheduled_runs * max_bar_width)
+        judged_width = int(judged_runs * max_bar_width)
         max_runs_per_prompt = len(attacks) * len(models)
-        remaining_width = int((max_runs_per_prompt - scheduled_runs - completed_runs) * max_bar_width)
+        remaining_runs = max_runs_per_prompt - scheduled_runs - completed_runs - judged_runs
+        remaining_width = int(remaining_runs * max_bar_width)
 
         # Create colored bars
-        completed_bar = Fore.GREEN + completed_bar_char * completed_width
+        judged_bar = Fore.GREEN + completed_bar_char * judged_width
+        completed_bar = Fore.LIGHTGREEN_EX + completed_bar_char * completed_width
         scheduled_bar = Fore.CYAN + scheduled_bar_char * scheduled_width
         remaining_bar = Fore.RED + scheduled_bar_char * remaining_width
 
-        print(f"{Fore.WHITE}Prompt {idx:>03}: {completed_bar}{scheduled_bar}{remaining_bar} {Fore.CYAN}{scheduled_runs}/{Fore.GREEN}{completed_runs}/{Fore.RED}{max_runs_per_prompt - scheduled_runs - completed_runs}")
-ascii_bar_chart(scheduled_runs_per_prompt, completed_runs_per_prompt)
+        print(f"{Fore.WHITE}Prompt {idx:>03}: {judged_bar}{completed_bar}{scheduled_bar}{remaining_bar} {Fore.GREEN}{judged_runs}/{Fore.LIGHTGREEN_EX}{completed_runs}/{Fore.CYAN}{scheduled_runs}/{Fore.RED}{remaining_runs}")
+        n_judged_total += judged_runs
+        n_completed_total += completed_runs
+        n_scheduled_total += scheduled_runs
+        n_remaining_total += remaining_runs
+    print(f"     {Fore.WHITE}TOTAL: " + " " * max_runs_per_prompt + f" {Fore.GREEN}{n_judged_total}/{Fore.LIGHTGREEN_EX}{n_completed_total}/{Fore.CYAN}{n_scheduled_total}/{Fore.RED}{n_remaining_total}")
+ascii_bar_chart(n_scheduled, n_completed, n_judged)
 
 # Run commands in parallel
 if args.run:

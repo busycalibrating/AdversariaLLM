@@ -94,7 +94,7 @@ cais/zephyr_7b_r2d2:
   id: cais/zephyr_7b_r2d2
   tokenizer_id: cais/zephyr_7b_r2d2
   short_name: R2D2
-  developer_name: ContinuousAT
+  developer_name: CAIS
   compile: False
   dtype: bfloat16
   chat_template: zephyr
