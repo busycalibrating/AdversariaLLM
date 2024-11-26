@@ -172,10 +172,12 @@ class GCGAttack(Attack):
             ]
 
             # Compute the KV Cache for tokens that appear before the optimized tokens
-            if self.config.use_prefix_cache:
+            if self.config.use_prefix_cache and model.name_or_path != "google/gemma-2-2b-it":
                 with torch.no_grad():
                     output = model(inputs_embeds=pre_prompt_embeds, use_cache=True)
                     self.prefix_cache = output.past_key_values
+            else:
+                self.prefix_cache = None
 
             self.target_ids = target_ids
             self.pre_prompt_embeds = pre_prompt_embeds
