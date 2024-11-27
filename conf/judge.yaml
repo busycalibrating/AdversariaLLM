@@ -1,7 +1,4 @@
 defaults:
-  - attacks: attacks
-  - datasets: datasets
-  - models: models
   - override hydra/launcher: a100.yaml
   - _self_
 
@@ -14,10 +11,6 @@ hydra:
   sweep:
     dir: /nfs/staff-ssd/beyer/llm-quick-check/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}/
 
-name: testing
+name: judge
 log_file: /nfs/staff-ssd/beyer/llm-quick-check/outputs/
-
-# overrides for parallelism
-attack_name: null
-dataset_name: null
-model_name: null
+suffixes: ["0","1","2","3","4","5","6","7","8","9"]

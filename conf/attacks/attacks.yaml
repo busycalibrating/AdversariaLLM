@@ -88,7 +88,15 @@ autodan:
   crossover: 0.5
   num_points: 5
   mutation: 0.01
-  mutate_model_id: null
+  mutate_model:
+    id: null
+    tokenizer_id: null
+    short_name: null
+    developer_name: null
+    chat_template: null
+    dtype: bfloat16
+    compile: false
+    trust_remote_code: True
   max_new_tokens: 256
 direct:
   name: direct
