@@ -1,6 +1,5 @@
 """Implementation of a embedding-space continuous attack."""
 
-import sys
 from dataclasses import dataclass
 from typing import Literal
 

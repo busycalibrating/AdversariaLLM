@@ -117,7 +117,7 @@ def main(cfg: DictConfig) -> None:
         if isinstance(cfg.suffixes, ListConfig):
             if not any(root.endswith(s) for s in cfg.suffixes):
                 continue
-        elif not root.endswith(cfg.suffixes):
+        elif not root.endswith(str(cfg.suffixes)):
             continue
 
         for file in files:

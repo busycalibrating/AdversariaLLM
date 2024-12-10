@@ -218,7 +218,7 @@ class GCGAttack(Attack):
                                 [
                                     (
                                         pre_prompt_ids.repeat(sampled_ids.shape[0], 1)
-                                        if "Llama-3-8B-Instruct"
+                                        if "Llama-3"
                                         not in tokenizer.name_or_path
                                         else torch.tensor([]).to(sampled_ids)
                                     ),
