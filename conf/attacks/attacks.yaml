@@ -126,7 +126,7 @@ pair:
     short_name: vicuna
     developer_name: lmsys
     max_attempts: 5
-    max_new_tokens: 768
+    max_new_tokens: 512
     temperature: 1
     chat_template: vicuna
     top_p: 0.9

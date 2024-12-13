@@ -70,6 +70,7 @@ Rules:
 Answer: [/INST]""",
 }
 
+
 @torch.no_grad()
 def judge(batch_size, classifier, tokenizer, behaviors, generations):
     inputs = [
@@ -81,7 +82,9 @@ def judge(batch_size, classifier, tokenizer, behaviors, generations):
     probs = []
     for i in range(0, len(inputs), batch_size):
         print(i)
-        encoded = tokenizer(inputs[i : i + batch_size], return_tensors="pt", padding=True)
+        encoded = tokenizer(
+            inputs[i : i + batch_size], return_tensors="pt", padding=True
+        )
         generation = classifier.generate(
             **encoded.to(classifier.device),
             do_sample=False,
@@ -99,8 +102,6 @@ def judge(batch_size, classifier, tokenizer, behaviors, generations):
     return completions, probs
 
 
-
-
 @hydra.main(config_path="./conf", config_name="judge", version_base="1.3")
 @print_exceptions
 def main(cfg: DictConfig) -> None:
@@ -108,8 +109,15 @@ def main(cfg: DictConfig) -> None:
     logging.info("-------------------")
     logging.info(f"Commencing run `{date_time_string}`")
     logging.info("-------------------")
-    classifier = AutoModelForCausalLM.from_pretrained("cais/HarmBench-Llama-2-13b-cls", torch_dtype=torch.bfloat16, device_map="auto")
-    tokenizer = AutoTokenizer.from_pretrained("cais/HarmBench-Llama-2-13b-cls", use_fast=False, truncation_side="left", padding_side="left")
+    classifier = AutoModelForCausalLM.from_pretrained(
+        "cais/HarmBench-Llama-2-13b-cls", torch_dtype=torch.bfloat16, device_map="auto"
+    )
+    tokenizer = AutoTokenizer.from_pretrained(
+        "cais/HarmBench-Llama-2-13b-cls",
+        use_fast=False,
+        truncation_side="left",
+        padding_side="left",
+    )
 
     path = "/nfs/staff-ssd/beyer/llm-quick-check/outputs"
     paths = []
@@ -141,7 +149,7 @@ def main(cfg: DictConfig) -> None:
                 model = run["config"]["model"]
                 attack = run["config"]["attack"]
 
-                if success_key not in run:
+                if success_key not in run or not run[success_key]:
                     updated_runs[i][success_key] = []
                     updated_runs[i][harmful_key] = []
                     for behavior, completions in zip(run["prompts"], run["completions"]):
@@ -151,8 +159,13 @@ def main(cfg: DictConfig) -> None:
                         seen.add((model, attack, prompt))
                         print(path, f"\nJudging {len(completions)} completions", end="...\n")
                         if cfg.n_chars is not None:
-                            completions = [c[:cfg.n_chars] for c in completions]
-                        answers, probs = find_executable_batch_size(judge, 256)(classifier, tokenizer, [behavior] * len(completions), completions)
+                            completions = [c[: cfg.n_chars] for c in completions]
+                        answers, probs = find_executable_batch_size(judge, 256)(
+                            classifier,
+                            tokenizer,
+                            [behavior] * len(completions),
+                            completions,
+                        )
                         n += len(completions)
                         updated_runs[i][success_key].append(answers)
                         updated_runs[i][harmful_key].append(probs)

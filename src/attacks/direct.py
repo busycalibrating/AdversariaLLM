@@ -56,4 +56,5 @@ class DirectAttack(Attack):
             for l, c in zip(losses, completions):
                 result.losses.append([l])
                 result.completions.append([c])
+                result.times.append([0])
         return result

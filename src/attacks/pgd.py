@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Literal
 
+import time
 import torch
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
@@ -47,7 +48,6 @@ class PGDAttack(Attack):
             self.config.embedding_scale = (
                 model.get_input_embeddings().weight.norm(dim=-1).mean().item()
             )
-
         for msg, target in dataset:
             pre_tokens, prompt_tokens, attack_tokens, post_tokens, target_tokens = (
                 prepare_tokens(
@@ -92,7 +92,7 @@ class PGDAttack(Attack):
         y = x.clone()
         y[:, :-1] = x[:, 1:]
         # Run the attack
-        losses, completions = find_executable_batch_size(
+        losses, completions, times = find_executable_batch_size(
             self.attack_batched, self.batch_size
         )(
             x,
@@ -109,6 +109,7 @@ class PGDAttack(Attack):
             completions=completions,
             losses=losses,
             prompts=prompts,
+            times=times,
         )
 
     def attack_batched(
@@ -126,7 +127,9 @@ class PGDAttack(Attack):
         losses = [[] for _ in range(num_examples)]
         completions = [[] for _ in range(num_examples)]
         perturbed_embeddings_list = [[] for _ in range(num_examples)]
+        times = []
         # Perform the actual attack
+        t0 = time.time()
         for i in range(0, num_examples, batch_size):
             x_batch = x[i : i + batch_size].to(model.device)
             y_batch = y[i : i + batch_size].to(model.device)
@@ -150,7 +153,7 @@ class PGDAttack(Attack):
                 )
                 loss = loss.view(perturbed_embeddings.size(0), -1)
                 loss = loss * target_masks_batch
-                loss = loss.mean(dim=1)
+                loss = loss.sum(dim=1)
                 loss.mean().backward()
                 for j, l in enumerate(loss.detach().tolist()):
                     losses[i + j].append(l)
@@ -164,6 +167,7 @@ class PGDAttack(Attack):
                     )
                     delta = self.project_l2(perturbed_embeddings - original_embeddings)
                     perturbed_embeddings = (original_embeddings + delta).detach()
+                times.append(time.time() - t0)
                 pbar.set_postfix({"loss": loss.mean().item()})
                 if self.config.generate_completions == "all":
                     for j, (pe, tm) in enumerate(
@@ -188,7 +192,7 @@ class PGDAttack(Attack):
 
         for i, output in enumerate(outputs):
             completions[i // len(perturbed_embeddings_list[0])].append(output)
-        return losses, completions
+        return losses, completions, times
 
     @staticmethod
     def get_completions(

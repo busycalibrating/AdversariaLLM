@@ -7,12 +7,10 @@ import logging
 import hydra
 import torch
 import json
-from omegaconf import DictConfig, ListConfig
+from omegaconf import DictConfig
 
 from src.errors import print_exceptions
 from accelerate.utils import find_executable_batch_size
-from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from src.io_utils import load_model_and_tokenizer
 from src.lm_utils import prepare_tokens, get_batched_completions
 

@@ -4,6 +4,7 @@ import sys
 from dataclasses import dataclass
 from typing import Literal
 
+import time
 import torch
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
@@ -90,12 +91,13 @@ class PGDOneHotAttack(Attack):
         y = x.clone()
         y[:, :-1] = x[:, 1:]
         # Run the attack
-        losses, completions = find_executable_batch_size(self.attack_batched, self.batch_size)(x, y, attention_mask, attack_masks, target_masks, model, tokenizer)        # assemble the results
+        losses, completions, times = find_executable_batch_size(self.attack_batched, self.batch_size)(x, y, attention_mask, attack_masks, target_masks, model, tokenizer)        # assemble the results
         return AttackResult(
             attacks=[None] * num_examples,
             completions=completions,
             losses=losses,
             prompts=prompts,
+            times=times,
         )
 
     def attack_batched(self, batch_size, x, y, attention_mask, attack_masks, target_masks, model, tokenizer):
@@ -103,6 +105,7 @@ class PGDOneHotAttack(Attack):
         losses = [[] for _ in range(num_examples)]
         completions = [[] for _ in range(num_examples)]
         perturbed_embeddings_list = [[] for _ in range(num_examples)]
+        times = []
         emb = model.get_input_embeddings().weight
         # Perform the actual attack
         for i in range(0, num_examples, batch_size):
@@ -123,6 +126,7 @@ class PGDOneHotAttack(Attack):
                 torch.rand_like(perturbed_one_hots) / perturbed_one_hots.size(-1) - perturbed_one_hots
             ) * attack_masks_batch[...,None]
             velocity = torch.zeros_like(perturbed_one_hots)
+            t0 = time.time()
             for _ in trange(self.config.num_steps):
                 perturbed_one_hots.requires_grad_(True)
                 model.zero_grad()
@@ -155,7 +159,7 @@ class PGDOneHotAttack(Attack):
                         perturbed_one_hots - self.config.alpha * velocity
                     )
                     perturbed_one_hots = torch.clamp(perturbed_one_hots, 0)
-
+                times.append(time.time()-t0)
                 if self.config.generate_completions == "all":
                     # Get completions right away
                     embeddings = (
@@ -183,7 +187,7 @@ class PGDOneHotAttack(Attack):
 
         for i, output in enumerate(outputs):
             completions[i // len(perturbed_embeddings_list[0])].append(output)
-        return losses, completions
+        return losses, completions, times
 
     @staticmethod
     def get_completions(batch_size, embedding_list, model, tokenizer, max_new_tokens=256):

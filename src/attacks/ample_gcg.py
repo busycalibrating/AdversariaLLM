@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Literal
 
+import time
 import torch
 import torch.nn as nn
 from accelerate.utils import find_executable_batch_size
@@ -13,16 +14,6 @@ from src.io_utils import free_vram, load_model_and_tokenizer
 from src.lm_utils import get_batched_completions, get_batched_losses, prepare_tokens
 
 from .attack import Attack, AttackResult
-
-
-@dataclass
-class AmpleGCGAttackResult:
-    """A class to store the attack result for a single instance in a dataset."""
-
-    attacks: list[str]
-    losses: list[float]
-    prompt: list
-    completions: list[int | None] = None
 
 
 @dataclass
@@ -38,12 +29,13 @@ class AmpleGCGAttack(Attack):
 
     @torch.no_grad
     def run(self, model: torch.nn.Module, tokenizer, dataset) -> AttackResult:
-        results = AttackResult([], [], [], [])
+        results = AttackResult([], [], [], [], [])
         for msg, target in dataset:
             # Temporarily move target model to cpu
             device = model.device
             model.cpu()
             free_vram()
+            t0 = time.time()
             attacks = self.get_attack_prompts(f"### Query:{msg['content']} ### Prompt:")
             model.to(device)
             losses = find_executable_batch_size(
@@ -56,6 +48,7 @@ class AmpleGCGAttack(Attack):
             results.losses.append(losses)
             results.prompts.append(msg)
             results.completions.append(completions)
+            results.times.append(time.time() - t0)
         return results
 
     def get_attack_prompts(self, msg):

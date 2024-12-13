@@ -5,6 +5,7 @@ import ast
 import gc
 import logging
 
+import time
 import torch
 import transformers
 from tqdm import trange
@@ -24,22 +25,24 @@ class PAIRAttack(Attack):
         tokenizer: transformers.AutoTokenizer,
         dataset: torch.utils.data.Dataset,
     ) -> AttackResult:
-        results = AttackResult([], [], [], [])
+        results = AttackResult([], [], [], [], [])
 
         for msg, target in dataset:
             # prepare tokens
-            attacks, completions = self.attack_single_prompt(
+            attacks, completions, times = self.attack_single_prompt(
                 model, tokenizer, msg["content"], target
             )
             results.prompts.append(msg)
             results.attacks.append(attacks)
             results.completions.append(completions)
+            results.times.append(times)
             results.losses.append([None] * len(attacks))
         return results
 
     def attack_single_prompt(self, model, tokenizer, prompt, target):
         attacks = []
         completions = []
+        times = []
         # Initialize models
         target_model = HuggingFace(model, tokenizer)
         # Can share underlying model and save VRAM if attack & target model are the same
@@ -55,6 +58,7 @@ class PAIRAttack(Attack):
         attack_model = AttackLM(
             attack_model, attack_tokenizer, self.config.attack_model
         )
+        t0 = time.time()
         # TODO: early stopping with judge model
         # judgeLM = load_judge(args)
 
@@ -69,7 +73,7 @@ class PAIRAttack(Attack):
         ]
 
         # Begin PAIR
-        for iteration in trange(1, self.config.num_steps + 1):
+        for _ in trange(self.config.num_steps):
             # Get adversarial prompts and improvement
             extracted_attack_list = attack_model.get_attack(
                 convs_list, processed_response_list
@@ -85,6 +89,7 @@ class PAIRAttack(Attack):
             improv_list = [attack["improvement"] for attack in extracted_attack_list]
 
             # Get target responses
+            times.append(time.time() - t0)
             target_response_list = target_model.get_response(adv_prompt_list)
             completions.extend(target_response_list)
             logging.info("Finished getting target responses.")
@@ -102,7 +107,7 @@ class PAIRAttack(Attack):
             # if any([score == 10 for score in judge_scores]):
             #     logging.info("Found a jailbreak. Exiting.")
             #     break
-        return attacks, completions
+        return attacks, completions, times
 
 
 def fix_llama2_tokens(inputs):
@@ -259,9 +264,8 @@ class AttackLM:
         assert len(convs_list) == len(prompts_list), "Mismatch betw. #convs & #prompts."
 
         tokenizer = self.tokenizer
-        batchsize = len(convs_list)
-        indices_to_regenerate = list(range(batchsize))
-        valid_outputs = [None] * batchsize
+        indices_to_regenerate = list(range(len(convs_list)))
+        valid_outputs = [None] * len(convs_list)
 
         # Initalize the attack model's generated output to match format
         if len(convs_list[0]) == 1:  # just system message
@@ -275,25 +279,32 @@ class AttackLM:
             conv.append({"role": "user", "content": prompt})
             conv.append({"role": "assistant", "content": init_message})
             full_prompt = tokenizer.apply_chat_template(
-                conv, add_generation_prompt=False, tokenize=False, continue_final_message=True
+                conv,
+                add_generation_prompt=False,
+                tokenize=False,
+                continue_final_message=True
             )
-            while (len(tokenizer(full_prompt).input_ids) + self.max_new_tokens) > tokenizer.model_max_length:
+            while len(tokenizer(full_prompt).input_ids) + self.max_new_tokens > tokenizer.model_max_length and len(conv) > 3:
                 # maintain system message, remove user+assistant message pairs until we fit
                 # in context window
                 conv = conv[:1] + conv[3:]
-                full_prompt = self.tokenizer.apply_chat_template(
-                    conv, add_generation_prompt=False, tokenize=False
+                full_prompt = tokenizer.apply_chat_template(
+                    conv,
+                    add_generation_prompt=False,
+                    tokenize=False,
+                    continue_final_message=True
                 )
             # Remove BOS token, will get added again later if necessary
             if tokenizer.bos_token and full_prompt.startswith(tokenizer.bos_token):
                 full_prompt = full_prompt.replace(tokenizer.bos_token, "", 1)
-            # Ensure tokenizer didn't add superfluous stuff at the end which would interfere with generation
+            # Ensure tokenizer didn't add superfluous stuff at the end which would
+            # interfere with generation
             if not full_prompt.endswith("\""):
                 idx = full_prompt[::-1].index("\"")
                 full_prompt = full_prompt[:-idx]
             full_prompts.append(full_prompt)
 
-        for attempt in range(self.max_attempts):
+        for _ in range(self.max_attempts):
             # Subset conversations based on indices to regenerate
             full_prompts_subset = [full_prompts[i] for i in indices_to_regenerate]
             # Generate outputs

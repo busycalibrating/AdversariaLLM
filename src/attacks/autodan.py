@@ -286,6 +286,7 @@ class AutoDANAttack(Attack):
             results.attacks.append(attacks)
             results.prompts.append(msg)
             results.completions.append(completions)
+            results.times.append(times)
         return results
 
     @staticmethod
