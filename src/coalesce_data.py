@@ -47,7 +47,6 @@ def main(args):
         "pgd_one_hot": 100,
     }
 
-
     def process_file(path):
         try:
             try:
@@ -121,6 +120,7 @@ def main(args):
 
 
     data_path = "/nfs/staff-ssd/beyer/llm-quick-check/outputs"
+    date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     paths = []
     for root, dirs, files in os.walk(data_path):
@@ -136,6 +136,8 @@ def main(args):
     print(f"Found {len(attack_runs)} runs.")
 
     df = pd.DataFrame(attack_runs)
+    get_filepath = lambda x, y: f"/nfs/staff-ssd/beyer/llm-quick-check/outputs/{x}_{date}.{y}"
+
 
     latest = df[df['done'] == True]
     latest['timestamp'] = latest['timestamp'].astype(str)
@@ -150,9 +152,12 @@ def main(args):
     # Reset the index if needed (optional)
     latest = latest.reset_index(drop=True)
     latest = latest.sort_values(by='prompt_idx')
-    latest.to_pickle(f'./attack_runs_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pkl')
 
-    df.to_pickle(f'./all_attack_runs_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pkl')
+    latest.to_pickle(get_filepath("attack_runs", "pkl"))
+    force_symlink(get_filepath("attack_runs", "pkl"), './outputs/attack_runs_latest.pkl')
+
+    df.to_pickle(get_filepath('all_attack_runs', "pkl"))
+    force_symlink(get_filepath('all_attack_runs', "pkl"), './outputs/all_attack_runs_latest.pkl')
 
     df["loss"] = df["loss"].apply(lambda x: x if x is not None else [])
     df["attack"] = df["attack"].apply(lambda x: x if x is not None else [])
@@ -161,9 +166,8 @@ def main(args):
         (df["completion"].apply(len) == df[["loss", "attack"]].map(len).max(axis=1))
         & ~df["done"]
     ]
-    unjudged[["path", "algorithm", "model"]].to_csv(
-        f'./unjudged_attack_runs_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.csv'
-    )
+    unjudged[["path", "algorithm", "model"]].to_csv(get_filepath("unjudged_attack_runs", "csv"))
+    force_symlink(get_filepath("unjudged_attack_runs", "csv"), './outputs/unjudged_attack_runs_latest.csv')
 
     print(f"Found {len(df)} attacks")
     print(f"Found {len(unjudged)} unjudged atacks")
@@ -359,6 +363,14 @@ def main(args):
     else:
         for c in commands:
             print(c)
+
+
+def force_symlink(filename, symlink_path):
+    # Remove the existing symlink if it exists
+    if os.path.islink(symlink_path):
+        os.unlink(symlink_path)
+    # Create a new symlink pointing to the latest file
+    os.symlink(filename, symlink_path)
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
