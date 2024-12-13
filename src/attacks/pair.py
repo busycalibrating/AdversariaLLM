@@ -95,9 +95,7 @@ class PAIRAttack(Attack):
         if self.config.attack_model.id == model.model.name_or_path:
             attack_model, attack_tokenizer = target_model, tokenizer
         else:
-            attack_model, attack_tokenizer = load_model_and_tokenizer(
-                self.config.attack_model.id, self.config.attack_model
-            )
+            attack_model, attack_tokenizer = load_model_and_tokenizer(self.config.attack_model)
             attack_model = HuggingFace(attack_model, attack_tokenizer)
 
         target_model = TargetLM(target_model, tokenizer, self.config.target_model)
