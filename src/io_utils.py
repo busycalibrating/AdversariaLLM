@@ -11,7 +11,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from src.attacks import AttackResult
 
 
-def load_model_and_tokenizer(model_path, model_params):
+def load_model_and_tokenizer(model_params):
     gc.collect()
     torch.cuda.empty_cache()
     if "float" not in model_params.dtype:
@@ -30,13 +30,13 @@ def load_model_and_tokenizer(model_path, model_params):
             raise ValueError(f"Unknown dtype {model_params.dtype}")
 
         model = AutoModelForCausalLM.from_pretrained(
-            model_path,
+            model_params.id,
             trust_remote_code=True,
             quantization_config=quantization_config,
         ).eval()
     else:
         model = AutoModelForCausalLM.from_pretrained(
-            model_path,
+            model_params.id,
             torch_dtype=getattr(torch, model_params.dtype),
             trust_remote_code=model_params.trust_remote_code,
             low_cpu_mem_usage=True,

@@ -144,7 +144,7 @@ class PrompterModel(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.batch_size = config.batch_size
-        self.model, self.tokenizer = load_model_and_tokenizer(config.id, config)
+        self.model, self.tokenizer = load_model_and_tokenizer(config)
         if not self.tokenizer.pad_token:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         self.gen_kwargs = {

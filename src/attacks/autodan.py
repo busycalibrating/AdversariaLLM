@@ -458,7 +458,7 @@ class AutoDANAttack(Attack):
 class HuggingFace:
     def __init__(self, model_or_model_path, tokenizer=None, config=None):
         if isinstance(model_or_model_path, str):
-            self.model, self.tokenizer = load_model_and_tokenizer(model_or_model_path, config)
+            self.model, self.tokenizer = load_model_and_tokenizer(config)
         else:
             self.model = model_or_model_path
             self.tokenizer = tokenizer

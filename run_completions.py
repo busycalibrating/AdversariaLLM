@@ -48,7 +48,7 @@ def main(cfg: DictConfig) -> None:
 
     id = cfg.model_name
     model_params = [v for k, v in cfg.models.items() if k == id][0]
-    model, tokenizer = load_model_and_tokenizer(id, model_params)
+    model, tokenizer = load_model_and_tokenizer(model_params)
     for path in paths:
         runs = json.load(open(path))
         updated_runs = [r.copy() for r in runs]
