@@ -1,9 +1,9 @@
 """Single-file implementation of the AmpleGCG attack."""
 
-from dataclasses import dataclass
-from typing import Literal
-
 import time
+from dataclasses import dataclass, field
+from typing import Literal, Optional
+
 import torch
 import torch.nn as nn
 from accelerate.utils import find_executable_batch_size
@@ -17,10 +17,33 @@ from .attack import Attack, AttackResult
 
 
 @dataclass
+class PrompterLMConfig:
+    id: str
+    tokenizer_id: str
+    chat_template: Optional[str]
+    short_name: str
+    developer_name: str
+    batch_size: int
+    dtype: str
+    attn_implmentation: Optional[str]
+    trust_remote_code: bool
+    compile: bool
+    generation_config: dict
+
+@dataclass
+class TargetLMConfig:
+    batch_size: int
+    max_new_tokens: int
+
+@dataclass
 class AmpleGCGConfig:
-    name: str = "AmpleGCG"
+    name: str = "ample_gcg"
     type: str = "discrete"
-    generate_completions: Literal["all", "best", "last"] = "last"
+    placement: str = "suffix"
+    generate_completions: Literal["all", "best", "last"] = "all"
+    seed: int = 0
+    prompter_lm: PrompterLMConfig = field(default_factory=PrompterLMConfig)
+    target_lm: TargetLMConfig = field(default_factory=TargetLMConfig)
 
 
 class AmpleGCGAttack(Attack):

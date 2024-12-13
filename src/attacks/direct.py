@@ -1,15 +1,30 @@
 """Baseline, just prompts the original prompt."""
 
 import time
+from dataclasses import dataclass
+from typing import Literal, Optional
+
 import torch
 import transformers
 
-from src.attacks import AttackResult, Attack
-from src.lm_utils import prepare_tokens, get_batched_completions, get_batched_losses
+from src.attacks import Attack, AttackResult
+from src.lm_utils import get_batched_completions, get_batched_losses, prepare_tokens
+
+
+@dataclass
+class DirectConfig:
+    name: str = "direct"
+    type: str = "discrete"
+    placement: Optional[str] = None
+    generate_completions: Literal["all", "best", "last"] = "all"
+    num_steps: int = 1
+    seed: int = 0
+    batch_size: int = 4
+    max_new_tokens: int = 256
 
 
 class DirectAttack(Attack):
-    def __init__(self, config):
+    def __init__(self, config: DirectConfig):
         super().__init__(config)
 
     @torch.no_grad
@@ -40,6 +55,7 @@ class DirectAttack(Attack):
                 yield lst[i : i + n]
 
         for chunk in chunks(token_lists, self.config.batch_size):
+            t0 = time.time()
             completions = get_batched_completions(
                 model,
                 tokenizer,
@@ -56,5 +72,5 @@ class DirectAttack(Attack):
             for l, c in zip(losses, completions):
                 result.losses.append([l])
                 result.completions.append([c])
-                result.times.append([0])
+                result.times.append([time.time() - t0])
         return result

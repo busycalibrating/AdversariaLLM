@@ -19,14 +19,14 @@ from .attack import Attack, AttackResult
 class PGDOneHotConfig:
     name: str = "pgd_one_hot"
     type: str = "continuous"
-    placement: str = "command"
-    generate_completions: Literal["all", "best", "last"] = "last"
-    num_steps: int = 30
-    momentum: float = 0.5
+    placement: str = "suffix"
+    generate_completions: Literal["all", "best", "last"] = "all"
+    num_steps: int = 100
     seed: int = 0
     batch_size: int = 2
-    optim_str_init: str = ""
+    optim_str_init: str = "x x x x x x x x x x x x x x x x x x x x"
     epsilon: float = 100000.0
+    momentum: float = 0.5
     alpha: float = 0.001
     max_new_tokens: int = 256
 

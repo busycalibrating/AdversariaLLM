@@ -4,8 +4,8 @@
 import random
 import re
 import time
-from dataclasses import dataclass
-from typing import Literal
+from dataclasses import dataclass, field
+from typing import Literal, Optional
 
 import numpy as np
 import torch
@@ -160,21 +160,34 @@ class AutoDANResult:
 
 
 @dataclass
+class MutateModelConfig:
+    id: Optional[str]
+    tokenizer_id: Optional[str]
+    short_name: Optional[str]
+    developer_name: Optional[str]
+    chat_template: Optional[str]
+    dtype: str
+    compile: bool
+    trust_remote_code: bool
+
+
+@dataclass
 class AutoDANConfig:
-    name: Literal["autodan"] = "autodan"
-    type: Literal["discrete"] = "discrete"
+    name: str = "autodan"
+    type: str = "discrete"
     placement: str = "prefix"
-    generate_completions: Literal["all", "best", "last"] = "last"
+    generate_completions: Literal["all", "best", "last"] = "all"
     num_steps: int = 100
     seed: int = 0
-    batch_size: int = 128
-    forward_batch_size: int | None = None
+    batch_size: int = 64
+    forward_batch_size: Optional[int] = None
     eval_steps: int = 5
     num_elites: float = 0.05
     crossover: float = 0.5
     num_points: int = 5
     mutation: float = 0.01
-    mutate_model: dict | None = None
+    mutate_model: MutateModelConfig = field(default_factory=MutateModelConfig)
+    max_new_tokens: int = 256
 
 
 class AutoDANAttack(Attack):

@@ -37,11 +37,11 @@ from .attack import Attack, AttackResult
 class GCGConfig:
     name: str = "gcg"
     type: str = "discrete"
-    placement: Literal["suffix"] = "suffix"
-    generate_completions: Literal["all", "best", "last"] = "last"
+    placement: str = "suffix"
+    generate_completions: Literal["all", "best", "last"] = "all"
     num_steps: int = 250
     seed: int = 0
-    batch_size: int | None = None
+    batch_size: int = 512
     optim_str_init: str = "x x x x x x x x x x x x x x x x x x x x"
     search_width: int = 512
     topk: int = 256
@@ -56,6 +56,7 @@ class GCGConfig:
     filter_ids: bool = True
     add_space_before_target: bool = False
     verbosity: str = "WARNING"
+    max_new_tokens: int = 256
 
 
 def get_nonascii_toks(tokenizer, device="cpu"):

@@ -1,13 +1,28 @@
-import transformers
+from dataclasses import dataclass
+from typing import Literal
+
 import torch
-import torch.nn.functional as F
-from src.lm_utils import get_batched_completions, prepare_tokens, get_batched_losses
-from src.attacks import AttackResult, Attack
+import transformers
 from tqdm import trange
+
+from src.attacks import Attack, AttackResult
+from src.lm_utils import get_batched_completions, get_batched_losses, prepare_tokens
+
+
+@dataclass
+class HumanJailbreaksConfig:
+    name: str = "human_jailbreaks"
+    type: str = "discrete"
+    placement: str = "prompt"
+    generate_completions: Literal["all", "best", "last"] = "all"
+    num_steps: int = 1
+    seed: int = 0
+    batch_size: int = 1
+    max_new_tokens: int = 256
 
 
 class HumanJailbreaksAttack(Attack):
-    def __init__(self, config):
+    def __init__(self, config: HumanJailbreaksConfig):
         super().__init__(config)
 
     @torch.no_grad

@@ -4,6 +4,8 @@
 import ast
 import gc
 import logging
+from dataclasses import dataclass, field
+from typing import Literal, Optional
 
 import time
 import torch
@@ -13,6 +15,50 @@ from tqdm import trange
 from src.io_utils import load_model_and_tokenizer
 
 from .attack import Attack, AttackResult
+
+
+@dataclass
+class AttackModelConfig:
+    id: str
+    tokenizer_id: str
+    dtype: str
+    compile: bool
+    trust_remote_code: bool
+    short_name: str
+    developer_name: str
+    max_attempts: int
+    max_new_tokens: int
+    temperature: float
+    chat_template: Optional[str]
+    top_p: float
+
+
+@dataclass
+class TargetModelConfig:
+    max_new_tokens: int
+    temperature: float
+    top_p: float
+
+
+@dataclass
+class JudgeModelConfig:
+    id: str
+    max_new_tokens: int
+
+
+@dataclass
+class PairConfig:
+    name: str = "pair"
+    type: str = "discrete"
+    placement: str = "multi-turn"
+    generate_completions: Literal["all", "best", "last"] = "all"
+    num_streams: int = 1
+    keep_last_num: int = 3
+    seed: int = 0
+    num_steps: int = 20
+    attack_model: AttackModelConfig = field(default_factory=AttackModelConfig)
+    target_model: TargetModelConfig = field(default_factory=TargetModelConfig)
+    judge_model: JudgeModelConfig = field(default_factory=JudgeModelConfig)
 
 
 class PAIRAttack(Attack):

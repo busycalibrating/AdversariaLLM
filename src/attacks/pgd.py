@@ -1,7 +1,7 @@
 """Implementation of a embedding-space continuous attack."""
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Optional
 
 import time
 import torch
@@ -18,16 +18,16 @@ from .attack import Attack, AttackResult
 class PGDConfig:
     name: str = "pgd"
     type: str = "continuous"
-    placement: str = "command"
-    generate_completions: Literal["all", "best", "last"] = "last"
-    num_steps: int = 30
+    placement: str = "suffix"
+    generate_completions: Literal["all", "best", "last"] = "all"
+    num_steps: int = 100
     seed: int = 0
-    batch_size: int = 2
-    optim_str_init: str = ""
+    batch_size: int = 16
+    optim_str_init: str = "x x x x x x x x x x x x x x x x x x x x"
     epsilon: float = 100000.0
-    alpha: float = 0.005
+    alpha: float = 0.001
     max_new_tokens: int = 256
-    embedding_scale: float | None = None
+    embedding_scale: Optional[float] = None
 
 
 class PGDAttack(Attack):
