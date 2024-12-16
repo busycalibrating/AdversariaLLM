@@ -48,6 +48,22 @@ def main(args):
     }
 
     def process_file(path):
+        def _is_judged(run):
+            if "successes_cais" not in run:
+                print("a")
+                return False
+            completions = run["completions"]
+            successes = run["successes_cais"]
+            if isinstance(successes, float):
+                return False
+            if len(completions) != len(successes):
+                return False
+            if not all(len(c) == len(s) for c, s in zip(completions, successes)):
+                return False
+            if not all(all(j in ["Yes", "No"] for j in s) for s in successes):
+                return False
+            return True
+
         try:
             try:
                 data = pd.read_json(path)
@@ -60,13 +76,7 @@ def main(args):
             date, time = path.split("/")[-3:-1]
 
             for run in runs:
-                # if 'successes_cais' in run:
-                # print(len(run['successes_cais']), len(run['completions']))
-                if (
-                    "successes_cais" not in run
-                    or isinstance(run["successes_cais"], float)
-                    or len(run["successes_cais"]) != len(run["completions"])
-                ):
+                if not _is_judged(run):
                     run.loc["successes_cais"] = [
                         [None for c in completion] for completion in run["completions"]
                     ]
@@ -98,10 +108,7 @@ def main(args):
                                 "dataset": dataset,
                                 "loss": loss,
                                 "completion": completion,
-                                "done": success is not None
-                                and None not in success
-                                and len(success) == len(completion)
-                                and len(completion) >= expected_steps[algorithm],
+                                "done": len(completion) >= expected_steps[algorithm] and _is_judged(run),
                                 "asr_cais": [
                                     (s == "Yes" if s is not None else None) for s in success
                                 ],
@@ -111,7 +118,6 @@ def main(args):
                                 "path": path,
                             }
                         )
-                        # print(success is not None, None not in success, len(success) == len(completion), len(completion) >= expected_steps[algorithm])
                     except KeyError:
                         pass
             return attacks

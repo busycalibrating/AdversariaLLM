@@ -1,16 +1,18 @@
 """Implementation of a embedding-space continuous attack."""
 
+import logging
+import time
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-import time
 import torch
 import torch.nn.functional as F
-from torch.nn.utils.rnn import pad_sequence
 from accelerate.utils import find_executable_batch_size
+from torch.nn.utils.rnn import pad_sequence
 from tqdm import trange
 
-from src.lm_utils import prepare_tokens, get_batched_completions
+from src.lm_utils import get_batched_completions, prepare_tokens
+
 from .attack import Attack, AttackResult
 
 
@@ -130,6 +132,7 @@ class PGDAttack(Attack):
         perturbed_embeddings_list = [[] for _ in range(num_examples)]
         times = []
         # Perform the actual attack
+        logging.info(f"Attacking {num_examples} examples in batches of {batch_size}")
         t0 = time.time()
         for i in range(0, num_examples, batch_size):
             x_batch = x[i : i + batch_size].to(model.device)
@@ -188,6 +191,7 @@ class PGDAttack(Attack):
                 ]
 
         flattened_embeddings = [e for el in perturbed_embeddings_list for e in el]
+        logging.info(f"Generating completions for {len(flattened_embeddings)} examples")
         outputs = find_executable_batch_size(self.get_completions, 64)(
             flattened_embeddings, model, tokenizer, self.config.max_new_tokens
         )
