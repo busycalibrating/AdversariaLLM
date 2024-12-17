@@ -155,7 +155,6 @@ def main(cfg: DictConfig) -> None:
         success_key = f"successes_cais_{cfg.n_chars}"
         harmful_key = f"p_harmful_{cfg.n_chars}"
     n = 0
-    seen = set()
     for path in tqdm(paths):
         try:
             runs = json.load(open(path))
@@ -169,10 +168,6 @@ def main(cfg: DictConfig) -> None:
                     updated_runs[i][success_key] = []
                     updated_runs[i][harmful_key] = []
                     for behavior, completions in zip(run["prompts"], run["completions"]):
-                        prompt = behavior["content"]
-                        if (model, attack, prompt) in seen:
-                            continue
-                        seen.add((model, attack, prompt))
                         print(path, f"\nJudging {len(completions)} completions", end="...\n")
                         if cfg.n_chars is not None:
                             completions = [c[: cfg.n_chars] for c in completions]
