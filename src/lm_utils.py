@@ -77,6 +77,7 @@ def get_batched_completions(
 
     B = len(embedding_list)
     tokens = []
+    generation_completed = torch.zeros(B, dtype=torch.bool)
     if padding_side == "left":
         if use_cache:
             raise NotImplementedError("KV-cache not implemented for left padding.")
@@ -116,7 +117,11 @@ def get_batched_completions(
             padded_embeddings[torch.arange(B), next_token_idx] = (
                 model.get_input_embeddings()(next_tokens).detach()
             )
-            tokens.append(next_tokens)
+            tokens.append(next_tokens.cpu())
+            generation_completed |= next_tokens.cpu() == tokenizer.eos_token_id
+            if generation_completed.all():
+                logging.info(f"Early exit after {i}/{max_new_tokens} tokens.")
+                break
             next_token_idx += 1
     elif padding_side == "right":
         # Add right padding
@@ -127,6 +132,12 @@ def get_batched_completions(
         next_token_idx = torch.tensor([e.size(0) for e in embedding_list])
 
         if use_cache:
+            # This is the hot path so we have additional optimizations here.
+            # As we generate tokens, we keep track of which prompts are completed,
+            # and only generate tokens for the active prompts.
+            # This is slightly (~20%) slower if all prompts have similar length,
+            # but faster if prompts have different lengths and **saves VRAM**.
+
             # Fill prefix cache
             past_key_values = DynamicCache()
             if next_token_idx.min() > 1:
@@ -141,23 +152,35 @@ def get_batched_completions(
                 # Instead, we feed a 'window' from the last token of the shortest prompt
                 # to the last token of the longest prompt.
                 # This means that caching works best if all sequences are of similar length.
-                outputs = model(
-                    inputs_embeds=padded_embeddings[:, next_token_idx.min() - 1 : next_token_idx.max()],
+                active_mask = ~generation_completed
+                active_mask_idx = torch.arange(B)[active_mask]
+                active_embeddings = padded_embeddings[active_mask, next_token_idx.min() - 1 : next_token_idx.max()]
+                logits = model(
+                    inputs_embeds=active_embeddings,
                     past_key_values=past_key_values,
                     use_cache=True,
-                )
-                next_tokens = outputs.logits.argmax(dim=-1)[
-                    torch.arange(B), next_token_idx - next_token_idx.min()
-                ]
-                padded_embeddings[torch.arange(B), next_token_idx] = (
-                    model.get_input_embeddings()(next_tokens).detach()
-                )
+                ).logits
+
+                next_tokens = torch.full((B,), tokenizer.eos_token_id, device=model.device)
+                next_token_idx_active = next_token_idx[active_mask]
+                next_tokens[active_mask] = logits[
+                    torch.arange(logits.size(0)),
+                    next_token_idx_active - next_token_idx.min()
+                ].argmax(dim=-1)
+
+                padded_embeddings[active_mask_idx, next_token_idx_active] = model.get_input_embeddings()(next_tokens[active_mask])
+                tokens.append(next_tokens.cpu())
+                continue_mask = (next_tokens.cpu() != tokenizer.eos_token_id)[active_mask]
                 # have to manually crop the past_key_values to the correct length
                 # since we only add a single step at a time
                 for j in range(len(past_key_values.key_cache)):
-                    past_key_values.key_cache[j] = past_key_values.key_cache[j][..., : next_token_idx.min(), :]
-                    past_key_values.value_cache[j] = past_key_values.value_cache[j][..., : next_token_idx.min(), :]
-                tokens.append(next_tokens)
+                    past_key_values.key_cache[j] = past_key_values.key_cache[j][continue_mask, :, :next_token_idx.min()]
+                    past_key_values.value_cache[j] = past_key_values.value_cache[j][continue_mask, :, :next_token_idx.min()]
+
+                generation_completed |= next_tokens.cpu() == tokenizer.eos_token_id
+                if generation_completed.all():
+                    logging.info(f"Early exit after {i}/{max_new_tokens} tokens.")
+                    break
                 next_token_idx += 1
         else:
             for i in range(max_new_tokens):
@@ -166,7 +189,11 @@ def get_batched_completions(
                 padded_embeddings[torch.arange(B), next_token_idx] = (
                     model.get_input_embeddings()(next_tokens).detach()
                 )
-                tokens.append(next_tokens)
+                tokens.append(next_tokens.cpu())
+                generation_completed |= next_tokens.cpu() == tokenizer.eos_token_id
+                if generation_completed.all():
+                    logging.info(f"Early exit after {i}/{max_new_tokens} tokens.")
+                    break
                 next_token_idx += 1
     else:
         raise ValueError(f"Unknown padding_side: {padding_side}")
