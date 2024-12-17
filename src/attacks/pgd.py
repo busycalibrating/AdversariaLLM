@@ -142,7 +142,7 @@ class PGDAttack(Attack):
             target_masks_batch = target_masks[i : i + batch_size].to(model.device)
 
             original_embeddings = model.get_input_embeddings()(x_batch)
-            perturbed_embeddings = original_embeddings.clone().detach()
+            perturbed_embeddings = original_embeddings.detach().clone()
             for _ in (pbar := trange(self.config.num_steps)):
                 perturbed_embeddings.requires_grad = True
                 model.zero_grad()
@@ -175,23 +175,13 @@ class PGDAttack(Attack):
                 times.append(time.time() - t0)
                 pbar.set_postfix({"loss": loss.mean().item()})
                 if self.config.generate_completions == "all":
-                    for j, (pe, tm) in enumerate(
-                        zip(perturbed_embeddings, target_masks_batch)
-                    ):
-                        perturbed_embeddings_list[i + j].append(
-                            pe[~(tm.roll(1, 0).cumsum(0).bool())].detach()
-                        )
+                    for j, (pe, tm) in enumerate(zip(perturbed_embeddings, target_masks_batch)):
+                        perturbed_embeddings_list[i + j].append(self.select_tokens(pe, tm))
             if self.config.generate_completions == "last":
-                embedding_list = [
-                    pe[~(tm.roll(1, 0).cumsum(0).bool())].detach()
-                    for pe, tm in zip(perturbed_embeddings, target_masks_batch)
-                ]
                 perturbed_embeddings_list[i : i + batch_size] = [
-                    [el] for el in embedding_list
+                    [self.select_tokens(pe, tm) for pe, tm in zip(perturbed_embeddings, target_masks_batch)]
                 ]
-
         flattened_embeddings = [e for el in perturbed_embeddings_list for e in el]
-        logging.info(f"Generating completions for {len(flattened_embeddings)} examples")
         outputs = find_executable_batch_size(self.get_completions, 64)(
             flattened_embeddings, model, tokenizer, self.config.max_new_tokens
         )
@@ -205,6 +195,7 @@ class PGDAttack(Attack):
         batch_size, embedding_list, model, tokenizer, max_new_tokens=256
     ):
         outputs = []
+        logging.info(f"Generating completions for {len(embedding_list)} examples in batches of {batch_size}")
         for i in trange(0, len(embedding_list), batch_size):
             output = get_batched_completions(
                 model,
@@ -219,6 +210,11 @@ class PGDAttack(Attack):
     def project_l2(self, delta):
         # We project the perturbation to have at most epsilon norm in the L2 norm
         # To compare across model families, we normalize epsilon by the mean embedding norm
-        norm = delta.norm(p=2, dim=-1, keepdim=True) / self.config.embedding_scale
-        mask = norm > self.config.epsilon
-        return torch.where(mask, delta * self.config.epsilon / norm, delta)
+        norm = delta.norm(p=2, dim=-1, keepdim=True)
+        eps_normalized = self.config.epsilon * self.config.embedding_scale
+        mask = norm > eps_normalized
+        return torch.where(mask, delta * eps_normalized / norm, delta)
+
+    @staticmethod
+    def select_tokens(embeddings, mask):
+        return embeddings[~(mask.roll(1, 0).cumsum(0).bool())].detach().cpu()
