@@ -9,3 +9,4 @@ conf/.ipynb_checkpoints/
 conf/attacks/.ipynb_checkpoints/
 conf/datasets/.ipynb_checkpoints/
 conf/hydra/launcher/.ipynb_checkpoints/
+wandb/
