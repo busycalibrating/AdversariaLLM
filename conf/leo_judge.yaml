@@ -1,6 +1,5 @@
 defaults:
-  - models: models
-  - override hydra/launcher: h100.yaml
+  #- override hydra/launcher: a100h100.yaml
   - _self_
 
 hydra:
@@ -12,7 +11,8 @@ hydra:
   sweep:
     dir: /ceph/ssd/staff/schwinn/experiments/2025/capo_vlm/attacks/judge_run/${now:%Y-%m-%d}/${now:%H-%M-%S}/
 
-name: completions
-log_file: /ceph/ssd/staff/schwinn/experiments/2025/capo_vlm/attacks/completions/
+name: judge
+log_file: /ceph/ssd/staff/schwinn/experiments/2025/capo_vlm/attacks/attack_json/
 suffixes: ["0","1","2","3","4","5","6","7","8","9"]
-model_name: null
+n_tokens: null
+n_chars: null

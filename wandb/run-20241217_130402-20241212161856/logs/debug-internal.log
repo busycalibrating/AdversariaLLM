@@ -1,0 +1,616 @@
+2024-12-17 13:04:02,238 INFO    StreamThr :394555 [internal.py:wandb_internal():85] W&B internal server running at pid: 394555, started at: 2024-12-17 13:04:02.237112
+2024-12-17 13:04:02,240 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status
+2024-12-17 13:04:02,249 INFO    WriterThread:394555 [datastore.py:open_for_write():87] open: /ceph/ssd/staff/schwinn/projects/25/llm-quick-check/wandb/run-20241217_130402-20241212161856/run-20241212161856.wandb
+2024-12-17 13:04:02,250 DEBUG   SenderThread:394555 [sender.py:send():379] send: header
+2024-12-17 13:04:02,263 DEBUG   SenderThread:394555 [sender.py:send():379] send: run
+2024-12-17 13:04:02,265 INFO    SenderThread:394555 [sender.py:_setup_resume():749] checking resume status for omega_alignment/vlm_icml_leo/20241212161856
+2024-12-17 13:04:02,734 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:04:02,735 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:04:03,918 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:04:03,919 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:04:05,368 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:04:06,100 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:04:06,101 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:04:06,101 INFO    SenderThread:394555 [retry.py:__call__():172] Retry attempt failed:
+Traceback (most recent call last):
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/retry.py", line 131, in __call__
+    result = self._call_fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/internal/internal_api.py", line 340, in execute
+    return self.client.execute(*args, **kwargs)  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/client.py", line 52, in execute
+    result = self._get_result(document, *args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/client.py", line 60, in _get_result
+    return self.transport.execute(document, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/gql_request.py", line 59, in execute
+    request.raise_for_status()
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 409 Client Error: Conflict for url: https://api.wandb.ai/graphql
+2024-12-17 13:04:07,270 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:04:10,268 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:04:10,268 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:04:10,369 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:04:12,275 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:04:15,370 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:04:17,279 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:04:18,511 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:04:18,512 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:04:20,371 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:04:22,284 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:04:25,372 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:04:27,288 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:04:30,373 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:04:32,293 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:04:35,374 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:04:35,378 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:04:35,378 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:04:35,971 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:04:35,971 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:04:37,297 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:04:40,375 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:04:42,302 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:04:45,376 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:04:47,306 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:04:50,377 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:04:52,311 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:04:55,378 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:04:57,315 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:05:00,379 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:02,320 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:05:05,380 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:07,324 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:05:10,381 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:10,981 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:05:10,981 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:05:12,329 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:05:15,383 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:17,334 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:05:20,384 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:22,338 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:05:25,385 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:27,342 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:05:30,386 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:32,347 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: cancel
+2024-12-17 13:05:32,347 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: cancel
+2024-12-17 13:05:32,347 DEBUG   SenderThread:394555 [sender.py:send():388] Record cancelled: run
+2024-12-17 13:05:32,348 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:35,387 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:37,349 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:40,388 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:42,350 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:45,389 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:47,351 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:50,390 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:52,352 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:52,906 INFO    StreamThr :394555 [internal.py:wandb_internal():85] W&B internal server running at pid: 394555, started at: 2024-12-17 13:05:52.905481
+2024-12-17 13:05:52,908 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status
+2024-12-17 13:05:52,917 INFO    WriterThread:394555 [datastore.py:open_for_write():87] open: /ceph/ssd/staff/schwinn/projects/25/llm-quick-check/wandb/run-20241217_130552-20241212161856/run-20241212161856.wandb
+2024-12-17 13:05:52,918 DEBUG   SenderThread:394555 [sender.py:send():379] send: header
+2024-12-17 13:05:52,935 DEBUG   SenderThread:394555 [sender.py:send():379] send: run
+2024-12-17 13:05:52,938 INFO    SenderThread:394555 [sender.py:_setup_resume():749] checking resume status for omega_alignment/vlm_icml_leo/20241212161856
+2024-12-17 13:05:53,503 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:05:53,504 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:05:54,802 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:05:54,803 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:05:55,028 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:05:55,028 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:05:55,028 ERROR   SenderThread:394555 [sender.py:send_run():1009] run 20241212161856 was previously created and deleted; try a new run name (Error 409: Conflict)
+Traceback (most recent call last):
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/apis/normalize.py", line 41, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/internal/internal_api.py", line 2190, in upsert_run
+    response = self.gql(
+               ^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/internal/internal_api.py", line 312, in gql
+    ret = self._retry_gql(
+          ^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/retry.py", line 131, in __call__
+    result = self._call_fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/internal/internal_api.py", line 340, in execute
+    return self.client.execute(*args, **kwargs)  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/client.py", line 52, in execute
+    result = self._get_result(document, *args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/client.py", line 60, in _get_result
+    return self.transport.execute(document, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/gql_request.py", line 59, in execute
+    request.raise_for_status()
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 409 Client Error: Conflict for url: https://api.wandb.ai/graphql
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/internal/sender.py", line 1007, in send_run
+    server_run = self._init_run(run, config_value_dict)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/internal/sender.py", line 1079, in _init_run
+    server_run, inserted, server_messages = self._api.upsert_run(
+                                            ^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/apis/normalize.py", line 51, in wrapper
+    raise CommError(message, error)
+wandb.errors.CommError: run 20241212161856 was previously created and deleted; try a new run name (Error 409: Conflict)
+2024-12-17 13:05:55,037 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:55,391 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:05:57,169 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:05:57,169 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:05:57,169 INFO    SenderThread:394555 [retry.py:__call__():172] Retry attempt failed:
+Traceback (most recent call last):
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/retry.py", line 131, in __call__
+    result = self._call_fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/internal/internal_api.py", line 340, in execute
+    return self.client.execute(*args, **kwargs)  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/client.py", line 52, in execute
+    result = self._get_result(document, *args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/client.py", line 60, in _get_result
+    return self.transport.execute(document, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/gql_request.py", line 59, in execute
+    request.raise_for_status()
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 409 Client Error: Conflict for url: https://api.wandb.ai/graphql
+2024-12-17 13:05:57,353 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:00,038 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:00,392 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:01,716 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:06:01,716 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:06:02,355 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:05,039 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:05,392 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:07,356 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:10,041 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:10,394 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:11,089 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:06:11,089 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:06:12,357 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:15,042 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:15,395 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:17,358 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:20,043 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:20,396 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:22,359 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:25,044 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:25,397 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:27,360 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:28,328 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:06:28,328 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:06:30,045 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:30,398 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:32,361 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:35,045 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:35,398 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:37,362 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:40,046 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:40,399 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:42,363 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:45,047 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:45,400 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:47,363 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:50,048 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:50,401 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:52,364 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:55,049 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:55,402 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:06:57,365 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:00,050 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:00,403 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:02,366 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:05,051 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:05,404 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:07,367 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:08,394 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:07:08,395 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:07:10,052 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:10,405 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:12,368 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:15,053 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:15,406 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:17,369 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:20,054 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:20,407 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:22,370 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:25,055 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:25,407 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:27,371 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:30,056 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:30,408 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:32,372 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:35,057 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:35,409 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:37,373 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:40,058 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:40,410 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:42,374 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:45,058 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:45,411 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:47,375 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:50,059 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:50,412 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:52,376 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:55,060 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:55,413 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:07:57,377 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:00,061 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:00,414 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:02,378 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:05,062 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:05,415 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:07,379 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:10,063 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:10,415 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:12,379 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:15,064 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:15,416 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:17,380 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:20,065 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:20,417 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:22,196 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:08:22,197 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:08:22,197 ERROR   SenderThread:394555 [sender.py:send_run():1009] run 20241212161856 was previously created and deleted; try a new run name (Error 409: Conflict)
+Traceback (most recent call last):
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/apis/normalize.py", line 41, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/internal/internal_api.py", line 2190, in upsert_run
+    response = self.gql(
+               ^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/internal/internal_api.py", line 312, in gql
+    ret = self._retry_gql(
+          ^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/retry.py", line 131, in __call__
+    result = self._call_fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/internal/internal_api.py", line 340, in execute
+    return self.client.execute(*args, **kwargs)  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/client.py", line 52, in execute
+    result = self._get_result(document, *args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/client.py", line 60, in _get_result
+    return self.transport.execute(document, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/gql_request.py", line 59, in execute
+    request.raise_for_status()
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 409 Client Error: Conflict for url: https://api.wandb.ai/graphql
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/internal/sender.py", line 1007, in send_run
+    server_run = self._init_run(run, config_value_dict)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/internal/sender.py", line 1079, in _init_run
+    server_run, inserted, server_messages = self._api.upsert_run(
+                                            ^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/apis/normalize.py", line 51, in wrapper
+    raise CommError(message, error)
+wandb.errors.CommError: run 20241212161856 was previously created and deleted; try a new run name (Error 409: Conflict)
+2024-12-17 13:08:22,203 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:22,381 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:25,067 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:25,418 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:27,204 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:27,382 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:30,067 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:30,419 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:32,205 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:32,383 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:35,068 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:35,420 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:37,206 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:37,384 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:40,069 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:40,421 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:42,207 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:42,385 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:45,070 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:45,422 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:47,208 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:47,386 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:50,071 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:50,422 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:52,209 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:52,387 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:55,072 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:55,423 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:57,210 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:08:57,387 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:00,073 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:00,424 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:02,211 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:02,388 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:05,074 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:05,425 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:07,212 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:07,389 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:10,075 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:10,426 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:12,213 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:12,390 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:15,076 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:15,427 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:17,214 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:17,391 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:20,077 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:20,428 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:22,215 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:22,392 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:25,078 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:25,429 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:27,216 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:27,393 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:30,079 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:30,429 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:32,217 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:32,394 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:35,080 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:35,430 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:37,218 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:37,395 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:40,080 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:40,431 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:42,219 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:42,396 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:45,081 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:45,432 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:47,219 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:47,397 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:50,082 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:50,433 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:52,220 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:52,397 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:55,083 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:55,434 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:57,221 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:09:57,398 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:00,084 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:00,435 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:02,222 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:02,399 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:05,085 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:05,435 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:07,223 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:07,400 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:10,086 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:10,436 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:12,224 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:12,401 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:15,087 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:15,437 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:17,225 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:17,402 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:20,087 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:20,438 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:22,226 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:22,403 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:25,088 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:25,439 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:27,227 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:27,404 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:30,089 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:30,440 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:32,228 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:32,405 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:35,090 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:35,441 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:37,229 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:37,406 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:40,091 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:40,442 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:42,230 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:42,407 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:45,092 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:45,443 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:47,231 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:47,407 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:50,093 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:50,444 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:52,232 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:52,408 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:55,094 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:55,445 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:57,233 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:10:57,409 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:00,095 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:00,446 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:02,234 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:02,410 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:05,095 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:05,447 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:07,235 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:07,411 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:10,096 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:10,448 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:12,236 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:12,412 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:15,097 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:15,449 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:17,237 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:17,413 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:20,098 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:20,450 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:22,238 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:22,414 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:25,099 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:25,450 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:27,239 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:27,415 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:30,100 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:30,451 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:32,240 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:32,416 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:35,101 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:35,452 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:37,241 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:37,417 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:40,102 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:40,453 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:42,242 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:42,418 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:45,103 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:45,454 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:47,242 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:47,419 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:50,104 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:50,455 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:50,748 INFO    StreamThr :394555 [internal.py:wandb_internal():85] W&B internal server running at pid: 394555, started at: 2024-12-17 13:11:50.747353
+2024-12-17 13:11:50,751 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status
+2024-12-17 13:11:50,758 INFO    WriterThread:394555 [datastore.py:open_for_write():87] open: /ceph/ssd/staff/schwinn/projects/25/llm-quick-check/wandb/run-20241217_131150-20241212161856/run-20241212161856.wandb
+2024-12-17 13:11:50,760 DEBUG   SenderThread:394555 [sender.py:send():379] send: header
+2024-12-17 13:11:50,773 DEBUG   SenderThread:394555 [sender.py:send():379] send: run
+2024-12-17 13:11:50,776 INFO    SenderThread:394555 [sender.py:_setup_resume():749] checking resume status for omega_alignment/vlm_icml_leo/20241212161856
+2024-12-17 13:11:51,253 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:11:51,253 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:11:52,243 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:52,420 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:52,602 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:11:52,602 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:11:55,105 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:55,226 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:11:55,226 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:11:55,226 INFO    SenderThread:394555 [retry.py:__call__():172] Retry attempt failed:
+Traceback (most recent call last):
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/retry.py", line 131, in __call__
+    result = self._call_fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/internal/internal_api.py", line 340, in execute
+    return self.client.execute(*args, **kwargs)  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/client.py", line 52, in execute
+    result = self._get_result(document, *args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/client.py", line 60, in _get_result
+    return self.transport.execute(document, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/gql_request.py", line 59, in execute
+    request.raise_for_status()
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 409 Client Error: Conflict for url: https://api.wandb.ai/graphql
+2024-12-17 13:11:55,456 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:55,780 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: keepalive
+2024-12-17 13:11:57,244 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:57,421 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:11:59,590 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:11:59,591 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:12:00,106 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:00,457 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:02,245 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:02,422 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:05,106 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:05,458 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:07,246 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:07,423 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:08,464 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:12:08,464 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:12:10,107 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:10,459 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:12,247 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:12,424 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:15,108 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:15,460 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:17,248 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:17,425 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:20,109 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:20,461 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:22,249 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:22,426 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:25,075 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:12:25,076 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:12:25,110 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:25,462 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:27,250 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:27,427 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:30,111 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:30,463 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:32,251 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:32,428 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:35,112 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:35,463 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:37,252 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:37,428 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:40,113 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:40,464 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:42,253 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:42,429 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:45,114 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:45,465 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:47,254 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:47,430 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:50,115 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:50,466 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:52,255 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:52,431 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:55,116 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:55,467 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:57,255 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:57,432 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:12:57,693 ERROR   SenderThread:394555 [internal_api.py:execute():344] 409 response executing GraphQL.
+2024-12-17 13:12:57,693 ERROR   SenderThread:394555 [internal_api.py:execute():345] {"errors":[{"message":"run 20241212161856 was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2024-12-17 13:13:00,116 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:00,468 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:02,256 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:02,433 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:05,117 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:05,469 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:07,257 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:07,434 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:10,118 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:10,470 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:12,258 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:12,435 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:15,119 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:15,471 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:17,259 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:17,436 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:20,120 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:20,472 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:22,260 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:22,437 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:25,121 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:25,472 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:27,261 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:27,438 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:30,122 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:30,473 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:32,262 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:32,439 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:35,123 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:35,474 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:37,263 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:37,440 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:40,123 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:40,475 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:42,263 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:42,441 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:45,124 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:45,476 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:47,264 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:47,442 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:50,125 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:50,476 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:52,265 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:52,443 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:55,126 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:55,477 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:57,266 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:13:57,444 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:14:00,127 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:14:00,478 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:14:02,267 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report
+2024-12-17 13:14:02,445 DEBUG   HandlerThread:394555 [handler.py:handle_request():158] handle_request: status_report

@@ -45,16 +45,12 @@ def main(cfg: DictConfig) -> None:
         for dataset_name, dataset_params in cfg.datasets.items():
             if cfg.dataset_name is not None and dataset_name != cfg.dataset_name:
                 continue
-            logging.info(
-                f"Dataset: {dataset_name}\n{OmegaConf.to_yaml(dataset_params)}"
-            )
+            logging.info(f"Dataset: {dataset_name}\n{OmegaConf.to_yaml(dataset_params)}")
             dataset = Dataset.from_name(dataset_name)(dataset_params)
             for attack_name, attack_params in cfg.attacks.items():
                 if cfg.attack_name is not None and attack_name != cfg.attack_name:
                     continue
-                logging.info(
-                    f"Attack: {attack_name}\n{OmegaConf.to_yaml(attack_params)}"
-                )
+                logging.info(f"Attack: {attack_name}\n{OmegaConf.to_yaml(attack_params)}")
                 attack = Attack.from_name(attack_name)(attack_params)
                 results = attack.run(model, tokenizer, dataset)
                 # get combined config for this run
@@ -67,9 +63,7 @@ def main(cfg: DictConfig) -> None:
                     attack_params,
                     cfg,
                 )
-                log_attack(
-                    run_config, results, cfg.log_file + f"{date_time_string}/run.json"
-                )
+                log_attack(run_config, results, cfg.log_file + f"{date_time_string}/run.json")
 
 
 if __name__ == "__main__":

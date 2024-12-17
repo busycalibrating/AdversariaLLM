@@ -1,0 +1,10 @@
+2024-12-17-14-45-07:
+  chat_template: phi-3
+  compile: false
+  developer_name: Microsoft
+  dtype: bfloat16
+  id: /ceph/ssd/staff/schwinn/experiments/2025/capo_vlm/models/2024-12-17-14-45-07/0/final_model
+  short_name: Phi
+  tokenizer_id: microsoft/Phi-3-mini-4k-instruct
+  trust_remote_code: false
+  wandb_experiment_id: 2024-12-17-14-45-07

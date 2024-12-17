@@ -13,7 +13,6 @@ from src.errors import print_exceptions
 from accelerate.utils import find_executable_batch_size
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from src.io_utils import free_vram
 
 
 torch.use_deterministic_algorithms(True, warn_only=True)  # determinism
@@ -73,18 +72,13 @@ Answer: [/INST]""",
 
 @torch.no_grad()
 def judge(batch_size, classifier, tokenizer, behaviors, generations):
-    inputs = [
-        LLAMA2_CLS_PROMPT["prompt"].format(behavior=b, generation=g)
-        for b, g in zip(behaviors, generations)
-    ]
+    inputs = [LLAMA2_CLS_PROMPT["prompt"].format(behavior=b, generation=g) for b, g in zip(behaviors, generations)]
 
     completions = []
     probs = []
     for i in range(0, len(inputs), batch_size):
         print(i)
-        encoded = tokenizer(
-            inputs[i : i + batch_size], return_tensors="pt", padding=True
-        )
+        encoded = tokenizer(inputs[i : i + batch_size], return_tensors="pt", padding=True)
         generation = classifier.generate(
             **encoded.to(classifier.device),
             do_sample=False,
@@ -109,9 +103,7 @@ def main(cfg: DictConfig) -> None:
     logging.info("-------------------")
     logging.info(f"Commencing run `{date_time_string}`")
     logging.info("-------------------")
-    classifier = AutoModelForCausalLM.from_pretrained(
-        "cais/HarmBench-Llama-2-13b-cls", torch_dtype=torch.bfloat16, device_map="auto"
-    )
+    classifier = AutoModelForCausalLM.from_pretrained("cais/HarmBench-Llama-2-13b-cls", torch_dtype=torch.bfloat16, device_map="auto")
     tokenizer = AutoTokenizer.from_pretrained(
         "cais/HarmBench-Llama-2-13b-cls",
         use_fast=False,
@@ -119,7 +111,7 @@ def main(cfg: DictConfig) -> None:
         padding_side="left",
     )
 
-    path = "/nfs/staff-ssd/beyer/llm-quick-check/outputs"
+    path = cfg.log_file
     paths = []
     for root, dirs, files in os.walk(path):
         if isinstance(cfg.suffixes, ListConfig):
@@ -174,7 +166,7 @@ def main(cfg: DictConfig) -> None:
             raise e
         try:
             json.dump(updated_runs, open(path, "w"), indent=2)
-        except KeyboardInterrupt as e:
+        except KeyboardInterrupt:
             json.dump(runs, open(path, "w"), indent=2)
             break
     print(f"Judged {n} completions")

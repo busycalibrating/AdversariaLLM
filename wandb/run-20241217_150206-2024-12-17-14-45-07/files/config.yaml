@@ -1,0 +1,867 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    python_version: 3.12.4
+    cli_version: 0.17.3
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1734444126
+    t:
+      1:
+      - 55
+      2:
+      - 55
+      3:
+      - 2
+      - 5
+      - 14
+      - 23
+      - 62
+      4: 3.12.4
+      5: 0.17.3
+      8:
+      - 5
+      13: linux-x86_64
+eval_delay:
+  desc: null
+  value: 0
+eval_on_start:
+  desc: null
+  value: false
+bf16:
+  desc: null
+  value: false
+hidden_size:
+  desc: null
+  value: 3072
+save_steps:
+  desc: null
+  value: 50
+is_decoder:
+  desc: null
+  value: false
+do_train:
+  desc: null
+  value: false
+use_mps_device:
+  desc: null
+  value: false
+initializer_range:
+  desc: null
+  value: 0.02
+use_liger:
+  desc: null
+  value: false
+sep_token_id:
+  desc: null
+  value: null
+fsdp_transformer_layer_cls_to_wrap:
+  desc: null
+  value: null
+fp16_opt_level:
+  desc: null
+  value: O1
+exponential_decay_length_penalty:
+  desc: null
+  value: null
+max_grad_norm:
+  desc: null
+  value: 0.3
+save_only_model:
+  desc: null
+  value: false
+torchscript:
+  desc: null
+  value: false
+push_to_hub_token:
+  desc: null
+  value: <PUSH_TO_HUB_TOKEN>
+length_column_name:
+  desc: null
+  value: length
+weight_decay:
+  desc: null
+  value: 0.001
+warmup_ratio:
+  desc: null
+  value: 0
+cross_attention_hidden_size:
+  desc: null
+  value: null
+per_device_train_batch_size:
+  desc: null
+  value: 2
+decoder_start_token_id:
+  desc: null
+  value: null
+ray_scope:
+  desc: null
+  value: last
+hub_always_push:
+  desc: null
+  value: false
+min_length:
+  desc: null
+  value: 0
+per_device_eval_batch_size:
+  desc: null
+  value: 8
+include_for_metrics:
+  desc: null
+  value: []
+problem_type:
+  desc: null
+  value: null
+return_dict_in_generate:
+  desc: null
+  value: false
+local_rank:
+  desc: null
+  value: 0
+resid_pdrop:
+  desc: null
+  value: 0
+eos_token_id:
+  desc: null
+  value: 32000
+split_batches:
+  desc: null
+  value: null
+typical_p:
+  desc: null
+  value: 1
+batch_eval_metrics:
+  desc: null
+  value: false
+greater_is_better:
+  desc: null
+  value: null
+architectures:
+  desc: null
+  value:
+  - Phi3ForCausalLM
+seed:
+  desc: null
+  value: 42
+eval_strategy:
+  desc: null
+  value: epoch
+bf16_full_eval:
+  desc: null
+  value: false
+output_hidden_states:
+  desc: null
+  value: false
+average_tokens_across_devices:
+  desc: null
+  value: false
+use_cpu:
+  desc: null
+  value: false
+resume_from_checkpoint:
+  desc: null
+  value: null
+top_p:
+  desc: null
+  value: 1
+dataset_num_proc:
+  desc: null
+  value: null
+original_max_position_embeddings:
+  desc: null
+  value: 4096
+tpu_num_cores:
+  desc: null
+  value: null
+intermediate_size:
+  desc: null
+  value: 8192
+max_length:
+  desc: null
+  value: 20
+remove_unused_columns:
+  desc: null
+  value: false
+repetition_penalty:
+  desc: null
+  value: 1
+finetuning_task:
+  desc: null
+  value: null
+num_key_value_heads:
+  desc: null
+  value: 32
+log_on_each_node:
+  desc: null
+  value: true
+prediction_loss_only:
+  desc: null
+  value: false
+logging_dir:
+  desc: null
+  value: /ceph/ssd/staff/schwinn/experiments/2025/capo_vlm/models/2024-12-17-14-45-07/0/trainer_logs
+use_ipex:
+  desc: null
+  value: false
+tie_word_embeddings:
+  desc: null
+  value: false
+gradient_checkpointing:
+  desc: null
+  value: false
+max_position_embeddings:
+  desc: null
+  value: 4096
+bos_token_id:
+  desc: null
+  value: 1
+adam_beta2:
+  desc: null
+  value: 0.999
+dataloader_pin_memory:
+  desc: null
+  value: true
+rope_scaling:
+  desc: null
+  value: null
+metric_for_best_model:
+  desc: null
+  value: null
+push_to_hub:
+  desc: null
+  value: false
+torch_compile_mode:
+  desc: null
+  value: null
+logging_strategy:
+  desc: null
+  value: steps
+ddp_backend:
+  desc: null
+  value: null
+group_by_length:
+  desc: null
+  value: false
+gradient_accumulation_steps:
+  desc: null
+  value: 8
+chars_per_token:
+  desc: null
+  value: <CHARS_PER_TOKEN>
+rope_theta:
+  desc: null
+  value: 10000
+remove_invalid_values:
+  desc: null
+  value: false
+gradient_checkpointing_kwargs:
+  desc: null
+  value: null
+rms_norm_eps:
+  desc: null
+  value: 1.0e-05
+pad_token_id:
+  desc: null
+  value: 32000
+dataset_text_field:
+  desc: null
+  value: text
+add_cross_attention:
+  desc: null
+  value: false
+ddp_find_unused_parameters:
+  desc: null
+  value: null
+torch_compile_backend:
+  desc: null
+  value: null
+fp16:
+  desc: null
+  value: true
+chunk_size_feed_forward:
+  desc: null
+  value: 0
+do_predict:
+  desc: null
+  value: false
+push_to_hub_organization:
+  desc: null
+  value: null
+tokenizer_class:
+  desc: null
+  value: null
+dataloader_prefetch_factor:
+  desc: null
+  value: null
+output_scores:
+  desc: null
+  value: false
+hub_token:
+  desc: null
+  value: <HUB_TOKEN>
+fsdp_config:
+  desc: null
+  value:
+    xla: false
+    xla_fsdp_v2: false
+    min_num_params: 0
+    xla_fsdp_grad_ckpt: false
+mp_parameters:
+  desc: null
+  value: ''
+id2label:
+  desc: null
+  value:
+    '0': LABEL_0
+    '1': LABEL_1
+neftune_noise_alpha:
+  desc: null
+  value: null
+ddp_bucket_cap_mb:
+  desc: null
+  value: null
+use_liger_kernel:
+  desc: null
+  value: false
+optim:
+  desc: null
+  value: paged_adamw_32bit
+sliding_window:
+  desc: null
+  value: 2047
+_name_or_path:
+  desc: null
+  value: microsoft/Phi-3-mini-4k-instruct
+tpu_metrics_debug:
+  desc: null
+  value: false
+lr_scheduler_type:
+  desc: null
+  value: cosine
+use_cache:
+  desc: null
+  value: true
+ignore_data_skip:
+  desc: null
+  value: false
+auto_find_batch_size:
+  desc: null
+  value: false
+label_smoothing_factor:
+  desc: null
+  value: 0
+eval_accumulation_steps:
+  desc: null
+  value: null
+max_seq_length:
+  desc: null
+  value: 128
+attention_bias:
+  desc: null
+  value: false
+task_specific_params:
+  desc: null
+  value: null
+torch_empty_cache_steps:
+  desc: null
+  value: null
+num_return_sequences:
+  desc: null
+  value: 1
+no_repeat_ngram_size:
+  desc: null
+  value: 0
+begin_suppress_tokens:
+  desc: null
+  value: null
+forced_eos_token_id:
+  desc: null
+  value: null
+adam_beta1:
+  desc: null
+  value: 0.9
+top_k:
+  desc: null
+  value: 50
+num_hidden_layers:
+  desc: null
+  value: 32
+save_strategy:
+  desc: null
+  value: steps
+output_attentions:
+  desc: null
+  value: false
+prefix:
+  desc: null
+  value: null
+load_best_model_at_end:
+  desc: null
+  value: false
+adafactor:
+  desc: null
+  value: false
+dataloader_drop_last:
+  desc: null
+  value: false
+per_gpu_train_batch_size:
+  desc: null
+  value: null
+diversity_penalty:
+  desc: null
+  value: 0
+data_seed:
+  desc: null
+  value: null
+disable_tqdm:
+  desc: null
+  value: false
+fsdp_min_num_params:
+  desc: null
+  value: 0
+hidden_act:
+  desc: null
+  value: silu
+num_of_sequences:
+  desc: null
+  value: 1024
+num_beam_groups:
+  desc: null
+  value: 1
+embd_pdrop:
+  desc: null
+  value: 0
+model/num_parameters:
+  desc: null
+  value: 3921742848
+save_safetensors:
+  desc: null
+  value: true
+warmup_steps:
+  desc: null
+  value: 0
+learning_rate:
+  desc: null
+  value: 0.0002
+adam_epsilon:
+  desc: null
+  value: 1.0e-08
+log_level_replica:
+  desc: null
+  value: warning
+_attn_implementation_autoset:
+  desc: null
+  value: true
+past_index:
+  desc: null
+  value: -1
+do_eval:
+  desc: null
+  value: true
+full_determinism:
+  desc: null
+  value: false
+hub_model_id:
+  desc: null
+  value: null
+include_num_input_tokens_seen:
+  desc: null
+  value: false
+temperature:
+  desc: null
+  value: 1
+jit_mode_eval:
+  desc: null
+  value: false
+logging_nan_inf_filter:
+  desc: null
+  value: true
+is_encoder_decoder:
+  desc: null
+  value: false
+transformers_version:
+  desc: null
+  value: 4.47.0
+dataloader_num_workers:
+  desc: null
+  value: 0
+logging_first_step:
+  desc: null
+  value: false
+encoder_no_repeat_ngram_size:
+  desc: null
+  value: 0
+tie_encoder_decoder:
+  desc: null
+  value: false
+logging_steps:
+  desc: null
+  value: 25
+max_steps:
+  desc: null
+  value: -1
+num_train_epochs:
+  desc: null
+  value: 1
+overwrite_output_dir:
+  desc: null
+  value: false
+model_type:
+  desc: null
+  value: phi3
+model_init_kwargs:
+  desc: null
+  value: null
+restore_callback_states_from_checkpoint:
+  desc: null
+  value: false
+ddp_timeout:
+  desc: null
+  value: 1800
+fsdp:
+  desc: null
+  value: []
+length_penalty:
+  desc: null
+  value: 1
+fp16_backend:
+  desc: null
+  value: auto
+log_level:
+  desc: null
+  value: passive
+push_to_hub_model_id:
+  desc: null
+  value: null
+label_names:
+  desc: null
+  value: null
+packing:
+  desc: null
+  value: false
+include_tokens_per_second:
+  desc: null
+  value: false
+save_total_limit:
+  desc: null
+  value: 1
+save_on_each_node:
+  desc: null
+  value: false
+tf32:
+  desc: null
+  value: null
+hub_strategy:
+  desc: null
+  value: every_save
+optim_target_modules:
+  desc: null
+  value: null
+label2id:
+  desc: null
+  value:
+    LABEL_1: 1
+    LABEL_0: 0
+early_stopping:
+  desc: null
+  value: false
+dataset_batch_size:
+  desc: null
+  value: 1000
+include_inputs_for_metrics:
+  desc: null
+  value: false
+quantization_config:
+  desc: null
+  value:
+    bnb_4bit_use_double_quant: false
+    load_in_8bit: false
+    _load_in_4bit: true
+    llm_int8_skip_modules:
+    - img_projection
+    - vision_model
+    quant_method: BITS_AND_BYTES
+    llm_int8_threshold: 6
+    load_in_4bit: true
+    bnb_4bit_compute_dtype: bfloat16
+    bnb_4bit_quant_storage: uint8
+    llm_int8_enable_fp32_cpu_offload: false
+    _load_in_8bit: false
+    llm_int8_has_fp16_weight: false
+    bnb_4bit_quant_type: nf4
+num_beams:
+  desc: null
+  value: 1
+tf_legacy_loss:
+  desc: null
+  value: false
+eval_do_concat_batches:
+  desc: null
+  value: true
+run_name:
+  desc: null
+  value: 2024-12-17-14-45-07
+hub_private_repo:
+  desc: null
+  value: null
+use_legacy_prediction_loop:
+  desc: null
+  value: false
+use_bfloat16:
+  desc: null
+  value: false
+optim_args:
+  desc: null
+  value: null
+vocab_size:
+  desc: null
+  value: 32064
+no_cuda:
+  desc: null
+  value: false
+per_gpu_eval_batch_size:
+  desc: null
+  value: null
+bad_words_ids:
+  desc: null
+  value: null
+evaluation_strategy:
+  desc: null
+  value: null
+skip_memory_metrics:
+  desc: null
+  value: true
+dataloader_persistent_workers:
+  desc: null
+  value: false
+ddp_broadcast_buffers:
+  desc: null
+  value: null
+fp16_full_eval:
+  desc: null
+  value: false
+dispatch_batches:
+  desc: null
+  value: null
+peft_config:
+  desc: null
+  value:
+    default:
+      r: 64
+      megatron_core: megatron.core
+      init_lora_weights: true
+      base_model_name_or_path: microsoft/Phi-3-mini-4k-instruct
+      target_modules:
+      - model.layers.17.mlp.down_proj
+      - model.layers.24.self_attn.qkv_proj
+      - model.layers.20.mlp.gate_up_proj
+      - model.layers.18.mlp.gate_up_proj
+      - model.layers.23.mlp.down_proj
+      - model.layers.10.self_attn.qkv_proj
+      - model.layers.31.mlp.down_proj
+      - model.layers.0.mlp.gate_up_proj
+      - model.layers.15.self_attn.o_proj
+      - model.layers.22.mlp.down_proj
+      - model.layers.13.self_attn.qkv_proj
+      - model.layers.16.mlp.gate_up_proj
+      - model.layers.9.mlp.down_proj
+      - model.layers.18.self_attn.qkv_proj
+      - model.layers.4.mlp.gate_up_proj
+      - model.layers.15.mlp.gate_up_proj
+      - model.layers.12.self_attn.qkv_proj
+      - model.layers.10.self_attn.o_proj
+      - model.layers.14.mlp.gate_up_proj
+      - model.layers.8.mlp.gate_up_proj
+      - model.layers.22.mlp.gate_up_proj
+      - model.layers.6.self_attn.qkv_proj
+      - model.layers.24.mlp.down_proj
+      - model.layers.13.mlp.down_proj
+      - model.layers.27.self_attn.qkv_proj
+      - model.layers.11.mlp.down_proj
+      - model.layers.4.self_attn.qkv_proj
+      - model.layers.0.self_attn.qkv_proj
+      - model.layers.30.self_attn.qkv_proj
+      - model.layers.23.self_attn.o_proj
+      - model.layers.27.mlp.gate_up_proj
+      - model.layers.6.self_attn.o_proj
+      - model.layers.24.mlp.gate_up_proj
+      - model.layers.8.self_attn.o_proj
+      - model.layers.1.mlp.down_proj
+      - model.layers.1.mlp.gate_up_proj
+      - model.layers.15.mlp.down_proj
+      - model.layers.16.mlp.down_proj
+      - model.layers.13.self_attn.o_proj
+      - model.layers.29.self_attn.o_proj
+      - model.layers.26.self_attn.o_proj
+      - model.layers.30.mlp.gate_up_proj
+      - model.layers.19.self_attn.qkv_proj
+      - model.layers.20.self_attn.o_proj
+      - model.layers.28.mlp.down_proj
+      - model.layers.19.self_attn.o_proj
+      - model.layers.27.mlp.down_proj
+      - model.layers.7.self_attn.o_proj
+      - model.layers.28.self_attn.o_proj
+      - model.layers.1.self_attn.o_proj
+      - model.layers.5.mlp.down_proj
+      - model.layers.0.self_attn.o_proj
+      - model.layers.12.mlp.down_proj
+      - model.layers.17.mlp.gate_up_proj
+      - model.layers.22.self_attn.qkv_proj
+      - model.layers.31.self_attn.o_proj
+      - model.layers.22.self_attn.o_proj
+      - model.layers.26.mlp.down_proj
+      - model.layers.29.mlp.down_proj
+      - model.layers.18.mlp.down_proj
+      - model.layers.20.self_attn.qkv_proj
+      - model.layers.25.self_attn.o_proj
+      - model.layers.2.mlp.down_proj
+      - model.layers.16.self_attn.o_proj
+      - model.layers.8.mlp.down_proj
+      - model.layers.21.self_attn.qkv_proj
+      - model.layers.14.self_attn.qkv_proj
+      - model.layers.12.self_attn.o_proj
+      - model.layers.16.self_attn.qkv_proj
+      - model.layers.23.self_attn.qkv_proj
+      - model.layers.11.mlp.gate_up_proj
+      - model.layers.14.self_attn.o_proj
+      - model.layers.7.self_attn.qkv_proj
+      - model.layers.17.self_attn.qkv_proj
+      - model.layers.9.self_attn.qkv_proj
+      - model.layers.26.self_attn.qkv_proj
+      - model.layers.25.self_attn.qkv_proj
+      - model.layers.31.self_attn.qkv_proj
+      - model.layers.28.mlp.gate_up_proj
+      - model.layers.19.mlp.gate_up_proj
+      - model.layers.6.mlp.down_proj
+      - model.layers.30.mlp.down_proj
+      - model.layers.29.self_attn.qkv_proj
+      - model.layers.6.mlp.gate_up_proj
+      - model.layers.2.self_attn.o_proj
+      - model.layers.5.self_attn.qkv_proj
+      - model.layers.10.mlp.gate_up_proj
+      - model.layers.24.self_attn.o_proj
+      - model.layers.21.self_attn.o_proj
+      - model.layers.8.self_attn.qkv_proj
+      - model.layers.11.self_attn.qkv_proj
+      - model.layers.10.mlp.down_proj
+      - model.layers.7.mlp.down_proj
+      - model.layers.1.self_attn.qkv_proj
+      - model.layers.27.self_attn.o_proj
+      - model.layers.20.mlp.down_proj
+      - model.layers.25.mlp.gate_up_proj
+      - model.layers.26.mlp.gate_up_proj
+      - model.layers.31.mlp.gate_up_proj
+      - model.layers.21.mlp.down_proj
+      - model.layers.29.mlp.gate_up_proj
+      - model.layers.11.self_attn.o_proj
+      - model.layers.4.mlp.down_proj
+      - model.layers.5.self_attn.o_proj
+      - model.layers.3.self_attn.qkv_proj
+      - model.layers.13.mlp.gate_up_proj
+      - model.layers.3.mlp.gate_up_proj
+      - model.layers.25.mlp.down_proj
+      - model.layers.2.mlp.gate_up_proj
+      - model.layers.9.self_attn.o_proj
+      - model.layers.0.mlp.down_proj
+      - model.layers.9.mlp.gate_up_proj
+      - model.layers.21.mlp.gate_up_proj
+      - model.layers.3.mlp.down_proj
+      - model.layers.18.self_attn.o_proj
+      - model.layers.28.self_attn.qkv_proj
+      - model.layers.14.mlp.down_proj
+      - model.layers.5.mlp.gate_up_proj
+      - model.layers.7.mlp.gate_up_proj
+      - model.layers.17.self_attn.o_proj
+      - model.layers.15.self_attn.qkv_proj
+      - model.layers.19.mlp.down_proj
+      - model.layers.30.self_attn.o_proj
+      - model.layers.12.mlp.gate_up_proj
+      - model.layers.2.self_attn.qkv_proj
+      - model.layers.3.self_attn.o_proj
+      - model.layers.4.self_attn.o_proj
+      - model.layers.23.mlp.gate_up_proj
+      revision: null
+      layer_replication: null
+      inference_mode: false
+      fan_in_fan_out: false
+      use_rslora: false
+      megatron_config: null
+      layers_to_transform: null
+      lora_alpha: 32
+      task_type: CAUSAL_LM
+      bias: none
+      lora_dropout: 0.1
+      use_dora: false
+      modules_to_save: null
+      auto_mapping: null
+      layers_pattern: null
+      peft_type: LORA
+eval_steps:
+  desc: null
+  value: null
+return_dict:
+  desc: null
+  value: true
+eval_packing:
+  desc: null
+  value: null
+num_attention_heads:
+  desc: null
+  value: 32
+half_precision_backend:
+  desc: null
+  value: auto
+report_to:
+  desc: null
+  value:
+  - tensorboard
+  - wandb
+torch_dtype:
+  desc: null
+  value: bfloat16
+eval_use_gather_object:
+  desc: null
+  value: false
+output_dir:
+  desc: null
+  value: /ceph/ssd/staff/schwinn/experiments/2025/capo_vlm/models/2024-12-17-14-45-07/0/trainer_output
+deepspeed:
+  desc: null
+  value: null
+accelerator_config:
+  desc: null
+  value:
+    non_blocking: false
+    use_seedable_sampler: true
+    even_batches: true
+    dispatch_batches: null
+    split_batches: false
+    gradient_accumulation_kwargs: null
+do_sample:
+  desc: null
+  value: false
+attention_dropout:
+  desc: null
+  value: 0
+torchdynamo:
+  desc: null
+  value: null
+suppress_tokens:
+  desc: null
+  value: null
+auto_map:
+  desc: null
+  value:
+    AutoModelForCausalLM: microsoft/Phi-3-mini-4k-instruct--modeling_phi3.Phi3ForCausalLM
+    AutoConfig: microsoft/Phi-3-mini-4k-instruct--configuration_phi3.Phi3Config
+debug:
+  desc: null
+  value: []
+torch_compile:
+  desc: null
+  value: false
+forced_bos_token_id:
+  desc: null
+  value: null

@@ -1,0 +1,170 @@
+2024-12-17 13:03:24,376 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Current SDK version is 0.17.3
+2024-12-17 13:03:24,376 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Configure stats pid to 112119
+2024-12-17 13:03:24,376 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Loading settings from /nfs/homedirs/swil/.config/wandb/settings
+2024-12-17 13:03:24,376 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Loading settings from /ceph/ssd/staff/schwinn/projects/25/llm-quick-check/wandb/settings
+2024-12-17 13:03:24,376 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Loading settings from environment variables: {'project': 'vlm-adv-training-leo', 'entity': 'omega_alignment'}
+2024-12-17 13:03:24,376 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Applying setup settings: {'_disable_service': False}
+2024-12-17 13:03:24,376 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Inferring run settings from compute environment: {'program': '<python with no main file>'}
+2024-12-17 13:03:24,376 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Applying login settings: {}
+2024-12-17 13:03:24,377 INFO    MainThread:112119 [wandb_init.py:_log_setup():520] Logging user logs to /ceph/ssd/staff/schwinn/projects/25/llm-quick-check/wandb/run-20241217_130324-20241212161856/logs/debug.log
+2024-12-17 13:03:24,377 INFO    MainThread:112119 [wandb_init.py:_log_setup():521] Logging internal logs to /ceph/ssd/staff/schwinn/projects/25/llm-quick-check/wandb/run-20241217_130324-20241212161856/logs/debug-internal.log
+2024-12-17 13:03:24,377 INFO    MainThread:112119 [wandb_init.py:init():560] calling init triggers
+2024-12-17 13:03:24,377 INFO    MainThread:112119 [wandb_init.py:init():567] wandb.init called with sweep_config: {}
+config: {}
+2024-12-17 13:03:24,377 INFO    MainThread:112119 [wandb_init.py:init():610] starting backend
+2024-12-17 13:03:24,378 INFO    MainThread:112119 [wandb_init.py:init():614] setting up manager
+2024-12-17 13:03:24,382 INFO    MainThread:112119 [backend.py:_multiprocessing_setup():105] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2024-12-17 13:03:24,383 INFO    MainThread:112119 [wandb_init.py:init():622] backend started and connected
+2024-12-17 13:03:24,396 INFO    MainThread:112119 [wandb_run.py:_label_probe_notebook():1334] probe notebook
+2024-12-17 13:03:24,396 INFO    MainThread:112119 [wandb_run.py:_label_probe_notebook():1344] Unable to probe notebook: 'NoneType' object has no attribute 'get'
+2024-12-17 13:03:24,396 INFO    MainThread:112119 [wandb_init.py:init():711] updated telemetry
+2024-12-17 13:03:24,411 INFO    MainThread:112119 [wandb_init.py:init():744] communicating run to backend with 90.0 second timeout
+2024-12-17 13:03:58,589 WARNING MainThread:112119 [wandb_init.py:init():1175] interrupted
+Traceback (most recent call last):
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/wandb_init.py", line 1171, in init
+    return wi.init()
+           ^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/wandb_init.py", line 747, in init
+    result = run_init_handle.wait(
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/mailbox.py", line 283, in wait
+    found, abandoned = self._slot._get_and_clear(timeout=wait_timeout)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/mailbox.py", line 130, in _get_and_clear
+    if self._wait(timeout=timeout):
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/mailbox.py", line 126, in _wait
+    return self._event.wait(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/threading.py", line 655, in wait
+    signaled = self._cond.wait(timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/threading.py", line 359, in wait
+    gotit = waiter.acquire(True, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+2024-12-17 13:04:02,217 INFO    MainThread:112119 [wandb_settings.py:_apply_login():1924] Applying login settings: {}
+2024-12-17 13:04:02,228 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Current SDK version is 0.17.3
+2024-12-17 13:04:02,228 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Configure stats pid to 112119
+2024-12-17 13:04:02,229 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Loading settings from /nfs/homedirs/swil/.config/wandb/settings
+2024-12-17 13:04:02,229 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Loading settings from /ceph/ssd/staff/schwinn/projects/25/llm-quick-check/wandb/settings
+2024-12-17 13:04:02,229 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Loading settings from environment variables: {'project': 'vlm-adv-training-leo', 'entity': 'omega_alignment'}
+2024-12-17 13:04:02,229 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Applying setup settings: {'_disable_service': False}
+2024-12-17 13:04:02,229 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Inferring run settings from compute environment: {'program': '<python with no main file>'}
+2024-12-17 13:04:02,229 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Applying login settings: {}
+2024-12-17 13:04:02,229 INFO    MainThread:112119 [wandb_init.py:_log_setup():520] Logging user logs to /ceph/ssd/staff/schwinn/projects/25/llm-quick-check/wandb/run-20241217_130402-20241212161856/logs/debug.log
+2024-12-17 13:04:02,230 INFO    MainThread:112119 [wandb_init.py:_log_setup():521] Logging internal logs to /ceph/ssd/staff/schwinn/projects/25/llm-quick-check/wandb/run-20241217_130402-20241212161856/logs/debug-internal.log
+2024-12-17 13:04:02,230 INFO    MainThread:112119 [wandb_init.py:init():560] calling init triggers
+2024-12-17 13:04:02,230 INFO    MainThread:112119 [wandb_init.py:init():567] wandb.init called with sweep_config: {}
+config: {}
+2024-12-17 13:04:02,230 INFO    MainThread:112119 [wandb_init.py:init():610] starting backend
+2024-12-17 13:04:02,231 INFO    MainThread:112119 [wandb_init.py:init():614] setting up manager
+2024-12-17 13:04:02,235 INFO    MainThread:112119 [backend.py:_multiprocessing_setup():105] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2024-12-17 13:04:02,235 INFO    MainThread:112119 [wandb_init.py:init():622] backend started and connected
+2024-12-17 13:04:02,248 INFO    MainThread:112119 [wandb_run.py:_label_probe_notebook():1334] probe notebook
+2024-12-17 13:04:02,248 INFO    MainThread:112119 [wandb_run.py:_label_probe_notebook():1344] Unable to probe notebook: 'NoneType' object has no attribute 'get'
+2024-12-17 13:04:02,248 INFO    MainThread:112119 [wandb_init.py:init():711] updated telemetry
+2024-12-17 13:04:02,262 INFO    MainThread:112119 [wandb_init.py:init():744] communicating run to backend with 90.0 second timeout
+2024-12-17 13:05:32,346 ERROR   MainThread:112119 [wandb_init.py:init():770] encountered error: Run initialization has timed out after 90.0 sec. 
+Please refer to the documentation for additional information: https://docs.wandb.ai/guides/track/tracking-faq#initstarterror-error-communicating-with-wandb-process-
+2024-12-17 13:05:32,348 ERROR   MainThread:112119 [wandb_init.py:init():1181] error in wandb.init()
+Traceback (most recent call last):
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/wandb_init.py", line 1171, in init
+    return wi.init()
+           ^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/wandb_init.py", line 776, in init
+    raise error
+wandb.errors.CommError: Run initialization has timed out after 90.0 sec. 
+Please refer to the documentation for additional information: https://docs.wandb.ai/guides/track/tracking-faq#initstarterror-error-communicating-with-wandb-process-
+2024-12-17 13:05:52,883 INFO    MainThread:112119 [wandb_settings.py:_apply_login():1924] Applying login settings: {}
+2024-12-17 13:05:52,896 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Current SDK version is 0.17.3
+2024-12-17 13:05:52,897 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Configure stats pid to 112119
+2024-12-17 13:05:52,897 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Loading settings from /nfs/homedirs/swil/.config/wandb/settings
+2024-12-17 13:05:52,897 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Loading settings from /ceph/ssd/staff/schwinn/projects/25/llm-quick-check/wandb/settings
+2024-12-17 13:05:52,897 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Loading settings from environment variables: {'project': 'vlm-adv-training-leo', 'entity': 'omega_alignment'}
+2024-12-17 13:05:52,897 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Applying setup settings: {'_disable_service': False}
+2024-12-17 13:05:52,897 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Inferring run settings from compute environment: {'program': '<python with no main file>'}
+2024-12-17 13:05:52,897 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Applying login settings: {}
+2024-12-17 13:05:52,898 INFO    MainThread:112119 [wandb_init.py:_log_setup():520] Logging user logs to /ceph/ssd/staff/schwinn/projects/25/llm-quick-check/wandb/run-20241217_130552-20241212161856/logs/debug.log
+2024-12-17 13:05:52,898 INFO    MainThread:112119 [wandb_init.py:_log_setup():521] Logging internal logs to /ceph/ssd/staff/schwinn/projects/25/llm-quick-check/wandb/run-20241217_130552-20241212161856/logs/debug-internal.log
+2024-12-17 13:05:52,898 INFO    MainThread:112119 [wandb_init.py:init():560] calling init triggers
+2024-12-17 13:05:52,898 INFO    MainThread:112119 [wandb_init.py:init():567] wandb.init called with sweep_config: {}
+config: {}
+2024-12-17 13:05:52,898 INFO    MainThread:112119 [wandb_init.py:init():610] starting backend
+2024-12-17 13:05:52,899 INFO    MainThread:112119 [wandb_init.py:init():614] setting up manager
+2024-12-17 13:05:52,903 INFO    MainThread:112119 [backend.py:_multiprocessing_setup():105] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2024-12-17 13:05:52,904 INFO    MainThread:112119 [wandb_init.py:init():622] backend started and connected
+2024-12-17 13:05:52,917 INFO    MainThread:112119 [wandb_run.py:_label_probe_notebook():1334] probe notebook
+2024-12-17 13:05:52,917 INFO    MainThread:112119 [wandb_run.py:_label_probe_notebook():1344] Unable to probe notebook: 'NoneType' object has no attribute 'get'
+2024-12-17 13:05:52,917 INFO    MainThread:112119 [wandb_init.py:init():711] updated telemetry
+2024-12-17 13:05:52,934 INFO    MainThread:112119 [wandb_init.py:init():744] communicating run to backend with 90.0 second timeout
+2024-12-17 13:05:56,283 WARNING MainThread:112119 [wandb_init.py:init():1175] interrupted
+Traceback (most recent call last):
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/wandb_init.py", line 1171, in init
+    return wi.init()
+           ^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/wandb_init.py", line 747, in init
+    result = run_init_handle.wait(
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/mailbox.py", line 283, in wait
+    found, abandoned = self._slot._get_and_clear(timeout=wait_timeout)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/mailbox.py", line 130, in _get_and_clear
+    if self._wait(timeout=timeout):
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/mailbox.py", line 126, in _wait
+    return self._event.wait(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/threading.py", line 655, in wait
+    signaled = self._cond.wait(timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/threading.py", line 359, in wait
+    gotit = waiter.acquire(True, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+2024-12-17 13:11:50,728 INFO    MainThread:112119 [wandb_settings.py:_apply_login():1924] Applying login settings: {}
+2024-12-17 13:11:50,739 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Current SDK version is 0.17.3
+2024-12-17 13:11:50,739 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Configure stats pid to 112119
+2024-12-17 13:11:50,739 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Loading settings from /nfs/homedirs/swil/.config/wandb/settings
+2024-12-17 13:11:50,739 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Loading settings from /ceph/ssd/staff/schwinn/projects/25/llm-quick-check/wandb/settings
+2024-12-17 13:11:50,739 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Loading settings from environment variables: {'project': 'vlm-adv-training-leo', 'entity': 'omega_alignment'}
+2024-12-17 13:11:50,739 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Applying setup settings: {'_disable_service': False}
+2024-12-17 13:11:50,739 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Inferring run settings from compute environment: {'program': '<python with no main file>'}
+2024-12-17 13:11:50,739 INFO    MainThread:112119 [wandb_setup.py:_flush():76] Applying login settings: {}
+2024-12-17 13:11:50,740 INFO    MainThread:112119 [wandb_init.py:_log_setup():520] Logging user logs to /ceph/ssd/staff/schwinn/projects/25/llm-quick-check/wandb/run-20241217_131150-20241212161856/logs/debug.log
+2024-12-17 13:11:50,740 INFO    MainThread:112119 [wandb_init.py:_log_setup():521] Logging internal logs to /ceph/ssd/staff/schwinn/projects/25/llm-quick-check/wandb/run-20241217_131150-20241212161856/logs/debug-internal.log
+2024-12-17 13:11:50,740 INFO    MainThread:112119 [wandb_init.py:init():560] calling init triggers
+2024-12-17 13:11:50,740 INFO    MainThread:112119 [wandb_init.py:init():567] wandb.init called with sweep_config: {}
+config: {}
+2024-12-17 13:11:50,740 INFO    MainThread:112119 [wandb_init.py:init():610] starting backend
+2024-12-17 13:11:50,740 INFO    MainThread:112119 [wandb_init.py:init():614] setting up manager
+2024-12-17 13:11:50,745 INFO    MainThread:112119 [backend.py:_multiprocessing_setup():105] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2024-12-17 13:11:50,745 INFO    MainThread:112119 [wandb_init.py:init():622] backend started and connected
+2024-12-17 13:11:50,758 INFO    MainThread:112119 [wandb_run.py:_label_probe_notebook():1334] probe notebook
+2024-12-17 13:11:50,758 INFO    MainThread:112119 [wandb_run.py:_label_probe_notebook():1344] Unable to probe notebook: 'NoneType' object has no attribute 'get'
+2024-12-17 13:11:50,758 INFO    MainThread:112119 [wandb_init.py:init():711] updated telemetry
+2024-12-17 13:11:50,772 INFO    MainThread:112119 [wandb_init.py:init():744] communicating run to backend with 90.0 second timeout
+2024-12-17 13:11:56,854 WARNING MainThread:112119 [wandb_init.py:init():1175] interrupted
+Traceback (most recent call last):
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/wandb_init.py", line 1171, in init
+    return wi.init()
+           ^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/wandb_init.py", line 747, in init
+    result = run_init_handle.wait(
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/mailbox.py", line 283, in wait
+    found, abandoned = self._slot._get_and_clear(timeout=wait_timeout)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/mailbox.py", line 130, in _get_and_clear
+    if self._wait(timeout=timeout):
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/site-packages/wandb/sdk/lib/mailbox.py", line 126, in _wait
+    return self._event.wait(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/threading.py", line 655, in wait
+    signaled = self._cond.wait(timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ceph/ssd/staff/schwinn/miniconda3/envs/capo_vlm/lib/python3.12/threading.py", line 359, in wait
+    gotit = waiter.acquire(True, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
