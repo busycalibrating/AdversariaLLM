@@ -50,7 +50,6 @@ def main(args):
     def process_file(path):
         def _is_judged(run):
             if "successes_cais" not in run:
-                print("a")
                 return False
             completions = run["completions"]
             successes = run["successes_cais"]

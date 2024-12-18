@@ -65,6 +65,10 @@ def load_model_and_tokenizer(model_params):
         case path if "llama-2" in path:
             tokenizer.pad_token = tokenizer.unk_token
             tokenizer.model_max_length = 4096
+        case path if "meta-llama/meta-llama-3-8b-instruct" in path:
+            tokenizer.model_max_length = 8192
+        case path if "berkeley-nest/starling-lm-7b-alpha" in path:
+            tokenizer.model_max_length = 8192
         case path if "gemma-2" in path:
             tokenizer.model_max_length = 8192
         case path if 'mistralai/mistral-7b-instruct-v0.3' in path:

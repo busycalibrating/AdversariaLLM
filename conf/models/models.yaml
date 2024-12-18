@@ -16,9 +16,45 @@ mistralai/Mistral-7B-Instruct-v0.3:
   dtype: bfloat16
   chat_template: mistral-instruct
   trust_remote_code: True
+berkeley-nest/Starling-LM-7B-alpha:
+  id: berkeley-nest/Starling-LM-7B-alpha
+  tokenizer_id: openchat/openchat_3.5
+  short_name: Mistral
+  developer_name: Mistral AI
+  compile: False
+  dtype: bfloat16
+  chat_template: openchat-3.5
+  trust_remote_code: True
 meta-llama/Meta-Llama-3.1-8B-Instruct:
   id: meta-llama/Meta-Llama-3.1-8B-Instruct
   tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: False
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: True
+NousResearch/Hermes-2-Pro-Llama-3-8B:
+  id: NousResearch/Hermes-2-Pro-Llama-3-8B
+  tokenizer_id: NousResearch/Hermes-2-Pro-Llama-3-8B
+  short_name: Hermes
+  developer_name: NousResearch
+  compile: False
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: True
+allenai/Llama-3.1-Tulu-3-8B-DPO:
+  id: allenai/Llama-3.1-Tulu-3-8B-DPO
+  tokenizer_id: allenai/Llama-3.1-Tulu-3-8B-DPO
+  short_name: Llama
+  developer_name: AllenAI
+  compile: False
+  dtype: bfloat16
+  chat_template: null
+  trust_remote_code: True
+meta-llama/Meta-Llama-3-8B-Instruct:
+  id: meta-llama/Meta-Llama-3-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3-8B-Instruct
   short_name: Llama
   developer_name: Meta
   compile: False
@@ -120,6 +156,15 @@ GraySwanAI/Mistral-7B-Instruct-RR:
 lmsys/vicuna-13b-v1.5:
   id: lmsys/vicuna-13b-v1.5
   tokenizer_id: lmsys/vicuna-13b-v1.5
+  short_name: Vicuna
+  developer_name: lmsys
+  compile: False
+  dtype: bfloat16
+  chat_template: vicuna
+  trust_remote_code: True
+lmsys/vicuna-7b-v1.5:
+  id: lmsys/vicuna-7b-v1.5
+  tokenizer_id: lmsys/vicuna-7b-v1.5
   short_name: Vicuna
   developer_name: lmsys
   compile: False

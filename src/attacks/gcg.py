@@ -89,32 +89,35 @@ def mellowmax(t: Tensor, alpha=1.0, dim=-1):
     )
 
 
-def filter_ids(ids: Tensor, tokenizer: transformers.PreTrainedTokenizer):
+def filter_ids(ids: Tensor, tokenizer: transformers.PreTrainedTokenizer, prompt, target):
     """Filters out sequences of token ids that change after retokenization.
 
     Args:
         ids : Tensor, shape = (search_width, n_optim_ids)
         tokenizer : ~transformers.PreTrainedTokenizer
+        prompt : str
+        target : str
 
     Returns:
         filtered_ids : Tensor, shape = (new_search_width, n_optim_ids)
             all token ids that are the same after retokenization
     """
-    ids_decoded = tokenizer.batch_decode(ids)
+    attacks_decoded = tokenizer.batch_decode(ids)
     filtered_idx = []
 
-    for i in range(len(ids_decoded)):
-        # Retokenize the decoded token ids
-        ids_encoded = (
-            tokenizer(ids_decoded[i], return_tensors="pt", add_special_tokens=False)
-            .to(ids.device)
-            .input_ids[0]
+    for i in range(len(attacks_decoded)):
+        pre_ids, prompt_ids, attack_ids, post_ids, target_ids = prepare_tokens(
+            tokenizer,
+            prompt,
+            target,
+            attack=attacks_decoded[i],
+            placement="suffix",
         )
         # Changed vs the original GCG implementation, we cut off the first few tokens.
         # This is because we feed the entire text (prompt + attack + post),
         # which is more accurate in general, but can lead to weird stuff at the
         # beginning of the sequence.
-        if torch.equal(ids[i, 1:], ids_encoded[-ids.size(1) + 1 :]):
+        if torch.equal(ids[i], attack_ids.to(ids.device)):
             filtered_idx.append(i)
 
     if not filtered_idx:
@@ -122,6 +125,12 @@ def filter_ids(ids: Tensor, tokenizer: transformers.PreTrainedTokenizer):
         raise RuntimeError(
             "No token sequences are the same after decoding and re-encoding. "
             "Consider setting `filter_ids=False` or trying a different `optim_str_init`"
+            "An example of the token sequence that failed:"
+            f"{ids[-1]}"
+            "->"
+            f"{attacks_decoded[-1]}"
+            "->"
+            f"{attack_ids}"
         )
     return filtered_idx
 
@@ -214,27 +223,14 @@ class GCGAttack(Attack):
                         # the entire prompt, not just the attack sequence in an isolated
                         # way. This is because the prompt and attack can affect each
                         # other's tokenization in some cases.
+                        no_pre_prompt_ids = ['Llama-3', 'berkeley-nest/Starling-LM-7B-alpha']
+                        no_post_ids = ['zephyr']
+
                         idx = filter_ids(
-                            torch.cat(
-                                [
-                                    (
-                                        pre_prompt_ids.repeat(sampled_ids.shape[0], 1)
-                                        if "Llama-3"
-                                        not in tokenizer.name_or_path
-                                        else torch.tensor([]).to(sampled_ids)
-                                    ),
-                                    sampled_ids,
-                                    # Zephyr tokenizer re-tokenizes post_ids differently
-                                    # every time
-                                    (
-                                        post_ids.repeat(sampled_ids.shape[0], 1)
-                                        if "zephyr" not in tokenizer.name_or_path
-                                        else torch.tensor([]).to(sampled_ids)
-                                    ),
-                                ],
-                                dim=1,
-                            ),
+                            sampled_ids,
                             tokenizer,
+                            msg["content"],
+                            target,
                         )
 
                         sampled_ids = sampled_ids[idx]

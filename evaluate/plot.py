@@ -15,14 +15,18 @@ MODEL_FAMILIES = {
             "cais/zephyr_7b_r2d2",
             "ContinuousAT/Zephyr-CAT",
             "GraySwanAI/Mistral-7B-Instruct-RR",
+            "berkeley-nest/Starling-LM-7B-alpha",
         ],
         "color": (255, 111, 32),
-        "markers": ['o', 'p', 'h', '^', 'x'],
+        "markers": ['o', 'p', 'h', '^', 'x', 's'],
     },
     "llama3": {
         "ids": [
             "meta-llama/Meta-Llama-3.1-8B-Instruct",
+            "meta-llama/Meta-Llama-3-8B-Instruct",
             "GraySwanAI/Llama-3-8B-Instruct-RR",
+            "NousResearch/Hermes-2-Pro-Llama-3-8B",
+            "allenai/Llama-3.1-Tulu-3-8B-DPO",
         ],
         "color": (0, 103, 219),
         "markers": ['o', 'x'],
@@ -31,10 +35,11 @@ MODEL_FAMILIES = {
         "ids": [
             "meta-llama/Llama-2-7b-chat-hf",
             "lmsys/vicuna-13b-v1.5",
+            "lmsys/vicuna-7b-v1.5",
             "ContinuousAT/Llama-2-7B-CAT",
         ],
         "color": (0, 120, 255),
-        "markers": ['o', 'p', '^'],
+        "markers": ['o', 'p', '^', 'x'],
     },
     "qwen": {
         "ids": [

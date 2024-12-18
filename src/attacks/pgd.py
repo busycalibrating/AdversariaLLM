@@ -12,6 +12,7 @@ from torch.nn.utils.rnn import pad_sequence
 from tqdm import trange
 
 from src.lm_utils import get_batched_completions, prepare_tokens
+from src.io_utils import free_vram
 
 from .attack import Attack, AttackResult
 
@@ -156,9 +157,9 @@ class PGDAttack(Attack):
                     reduction="none",
                 )
                 loss = loss.view(perturbed_embeddings.size(0), -1)
-                loss = loss * target_masks_batch
-                loss = loss.sum(dim=1)
-                loss.mean().backward()
+                loss = loss * target_masks_batch  # (B, L)
+                loss = loss.mean(dim=1)  # (B,)
+                loss.sum().backward()
                 for j, l in enumerate(loss.detach().tolist()):
                     losses[i + j].append(l)
 
@@ -197,6 +198,7 @@ class PGDAttack(Attack):
         outputs = []
         logging.info(f"Generating completions for {len(embedding_list)} examples in batches of {batch_size}")
         for i in trange(0, len(embedding_list), batch_size):
+            free_vram()
             output = get_batched_completions(
                 model,
                 tokenizer,
