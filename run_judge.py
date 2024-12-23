@@ -158,6 +158,8 @@ def main(cfg: DictConfig) -> None:
     logging.info("-------------------")
     logging.info(f"Commencing judge run")
     logging.info("-------------------")
+    print(cfg)
+    
     model_names = {
         "cais": ("cais/HarmBench-Llama-2-13b-cls", judge_cais),
         "llama_guard_3_8b": ("meta-llama/Llama-Guard-3-8B", judge_llama_guard_3),

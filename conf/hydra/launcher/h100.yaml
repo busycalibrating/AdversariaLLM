@@ -8,8 +8,8 @@ nodes: 1
 name: ${hydra.job.name}
 comment: null
 exclude: null
-signal_delay_s: 600
-max_num_timeout: 20
+signal_delay_s: 60
+max_num_timeout: 0
 additional_parameters: {}
 setup: []
 gres: gpu:1
