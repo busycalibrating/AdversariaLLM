@@ -317,8 +317,8 @@ class GCGAttack(Attack):
                 model,
                 tokenizer,
                 token_list=token_list,
-                initial_batch_size=self.config.target_lm.batch_size,
-                max_new_tokens=self.config.target_lm.max_new_tokens
+                initial_batch_size=self.config.batch_size,
+                max_new_tokens=self.config.max_new_tokens
             )
             results.losses.append(losses)
             results.attacks.append(optim_strings)
