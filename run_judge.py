@@ -99,7 +99,7 @@ def judge_cais(batch_size, classifier, tokenizer, behaviors, generations):
 
 
 @torch.no_grad()
-def judge_llama_guard_3(batch_size, classifier, tokenizer, behaviors, generations):
+def judge_llama_guard_3_8b(batch_size, classifier, tokenizer, behaviors, generations):
     chats = [
         [
             b,
@@ -145,7 +145,7 @@ def is_judged(run, key):
         return False
     if not all(len(c) == len(s) for c, s in zip(completions, successes)):
         return False
-    if not all(all(j in ["Yes", "No"] for j in s) for s in successes):
+    if not (all(all(j in ["Yes", "No"] for j in s) for s in successes) or all(all(isinstance(p, float) for p in s) for s in successes)):
         return False
     return True
 
@@ -160,7 +160,7 @@ def main(cfg: DictConfig) -> None:
 
     model_names = {
         "cais": ("cais/HarmBench-Llama-2-13b-cls", judge_cais),
-        "llama_guard_3_8b": ("meta-llama/Llama-Guard-3-8B", judge_llama_guard_3),
+        "llama_guard_3_8b": ("meta-llama/Llama-Guard-3-8B", judge_llama_guard_3_8b),
     }
     if cfg.classifier not in model_names:
         raise ValueError(f"Unknown classifier {cfg.classifier}")

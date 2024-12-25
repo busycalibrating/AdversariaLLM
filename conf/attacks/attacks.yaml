@@ -49,7 +49,7 @@ ample_gcg:
       min_new_tokens: 20
       diversity_penalty: 1.0
   target_lm:
-    batch_size: 24
+    batch_size: 64
     max_new_tokens: 256
 gcg:
   name: gcg
