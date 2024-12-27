@@ -42,6 +42,10 @@ class Attack:
                 from .ample_gcg import AmpleGCGAttack
 
                 return AmpleGCGAttack
+            case "beast":
+                from .beast import BEASTAttack
+
+                return BEASTAttack
             case "direct":
                 from .direct import DirectAttack
 

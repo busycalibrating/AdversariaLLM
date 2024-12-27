@@ -187,7 +187,7 @@ class PGDAttack(Attack):
             model,
             tokenizer,
             embedding_list=flattened_embeddings,
-            initial_batch_size=64,
+            initial_batch_size=256,
             max_new_tokens=self.config.max_new_tokens,
         )
         for i, output in enumerate(outputs):

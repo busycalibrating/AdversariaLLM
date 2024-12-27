@@ -47,7 +47,7 @@ def generate_ragged_batched(
 
     outputs = []
     i = 0
-    batch_size = initial_batch_size
+    batch_size = min(initial_batch_size, len(input_list))
     pbar = tqdm(total=len(input_list), desc=f"Generating completions b={batch_size}")
     while i < len(input_list):
         chunk = input_list[i : i + batch_size]
@@ -148,7 +148,7 @@ def generate_ragged(
             model.get_input_embeddings()(t.unsqueeze(0))[0] for t in token_list
         ]
     # TODO: Implement KV-caching for Gemma
-    if use_cache and model.name_or_path == "google/gemma-2-2b-it":
+    if use_cache and "gemma-2" in model.name_or_path:
         logging.warning("KV-cache not implemented for Gemma 2. Disabling cache.")
         use_cache = False
 
@@ -477,7 +477,7 @@ def prepare_tokens(
     attack_length = len(tokenized_together) - len(tokenized_together_no_attack)
 
     prompt_tokens, attack_tokens = torch.tensor_split(
-        prompt_attack_tokens, [-attack_length]
+        prompt_attack_tokens, [prompt_attack_tokens.size(0)-attack_length]
     )
     if "llama-2" in tokenizer.name_or_path.lower():
         # LLama 2 models have incorrect templating and need to be fixed manually

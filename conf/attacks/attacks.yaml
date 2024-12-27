@@ -145,3 +145,16 @@ human_jailbreaks:
   seed: 0
   batch_size: 1
   max_new_tokens: 256
+beast:
+  name: beast
+  type: discrete
+  placement: "suffix"
+  generate_completions: all
+  num_steps: 40
+  seed: 0
+  batch_size: 4
+  optim_str_init: ""
+  k1: 15
+  k2: 15
+  temperature: 1.0
+  max_new_tokens: 256
