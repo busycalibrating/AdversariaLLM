@@ -2,6 +2,5 @@ outputs/
 *.pyc
 __pycache__
 multirun/
-old_outputs/
-outputs_old/
 .vscode/settings.json
+outputs_archive

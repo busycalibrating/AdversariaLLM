@@ -2,7 +2,7 @@ defaults:
   - submitit_slurm
 
 _target_: hydra_plugins.hydra_submitit_launcher.submitit_launcher.SlurmLauncher
-timeout_min: 5760 # 96 hours
+timeout_min: 1920 # 32 hours
 tasks_per_node: 1
 nodes: 1
 name: ${hydra.job.name}
@@ -13,6 +13,6 @@ max_num_timeout: 0
 additional_parameters: {}
 setup: []
 gres: gpu:1
-mem_gb: 16
+mem_gb: 32
 cpus_per_task: 4
 partition: gpu_a100,gpu_h100

@@ -19,5 +19,5 @@ save_dir: ${root_dir}/outputs/
 
 # overrides for parallelism
 attack_name: null
-dataset_name: null
+dataset_name: adv_behaviors
 model_name: null

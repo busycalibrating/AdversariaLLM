@@ -1,30 +1,3 @@
-pgd:
-  name: pgd
-  type: continuous
-  placement: suffix
-  generate_completions: all
-  num_steps: 100
-  seed: 0
-  batch_size: 16
-  optim_str_init: "x x x x x x x x x x x x x x x x x x x x" # all tested tokenizers convert this to exactly 20 tokens
-  epsilon: 100000.
-  alpha: 0.001
-  max_new_tokens: 256
-  embedding_scale: null
-  normalize_alpha: false
-pgd_one_hot:
-  name: pgd_one_hot
-  type: continuous
-  placement: suffix
-  generate_completions: all
-  num_steps: 100
-  seed: 0
-  batch_size: 2
-  optim_str_init: "x x x x x x x x x x x x x x x x x x x x" # all tested tokenizers convert this to exactly 20 tokens
-  epsilon: 100000.
-  momentum: 0.5
-  alpha: 0.001
-  max_new_tokens: 256
 ample_gcg:
   name: ample_gcg
   type: discrete
@@ -51,29 +24,6 @@ ample_gcg:
   target_lm:
     batch_size: 64
     max_new_tokens: 256
-gcg:
-  name: gcg
-  type: discrete
-  placement: suffix
-  generate_completions: all
-  num_steps: 250
-  seed: 0
-  batch_size: 512
-  optim_str_init: "x x x x x x x x x x x x x x x x x x x x" # all tested tokenizers convert this to exactly 20 tokens
-  search_width: 512
-  topk: 256
-  n_replace: 1
-  buffer_size: 0
-  use_mellowmax: False
-  use_constrained_gradient: False
-  mellowmax_alpha: 1.0
-  early_stop: False
-  use_prefix_cache: True
-  allow_non_ascii: False
-  allow_special: False
-  filter_ids: True
-  verbosity: WARNING
-  max_new_tokens: 256
 autodan:
   name: autodan
   type: discrete
@@ -98,6 +48,19 @@ autodan:
     compile: false
     trust_remote_code: True
   max_new_tokens: 256
+beast:
+  name: beast
+  type: discrete
+  placement: "suffix"
+  generate_completions: all
+  num_steps: 40
+  seed: 0
+  batch_size: 4
+  optim_str_init: ""
+  k1: 15
+  k2: 15
+  temperature: 1.0
+  max_new_tokens: 256
 direct:
   name: direct
   type: discrete
@@ -106,6 +69,38 @@ direct:
   num_steps: 1
   seed: 0
   batch_size: 4
+  max_new_tokens: 256
+gcg:
+  name: gcg
+  type: discrete
+  placement: suffix
+  generate_completions: all
+  num_steps: 250
+  seed: 0
+  batch_size: 512
+  optim_str_init: "x x x x x x x x x x x x x x x x x x x x" # all tested tokenizers convert this to exactly 20 tokens
+  search_width: 512
+  topk: 256
+  n_replace: 1
+  buffer_size: 0
+  use_mellowmax: False
+  use_constrained_gradient: False
+  mellowmax_alpha: 1.0
+  early_stop: False
+  use_prefix_cache: True
+  allow_non_ascii: False
+  allow_special: False
+  filter_ids: True
+  verbosity: WARNING
+  max_new_tokens: 256
+human_jailbreaks:
+  name: human_jailbreaks
+  type: discrete
+  placement: prompt
+  generate_completions: all
+  num_steps: 1
+  seed: 0
+  batch_size: 1
   max_new_tokens: 256
 pair:
   name: pair
@@ -136,25 +131,30 @@ pair:
   judge_model:
     id: cais/HarmBench-Llama-2-13b-cls
     max_new_tokens: 1
-human_jailbreaks:
-  name: human_jailbreaks
-  type: discrete
-  placement: prompt
+pgd:
+  name: pgd
+  type: continuous
+  placement: suffix
   generate_completions: all
-  num_steps: 1
+  num_steps: 100
   seed: 0
-  batch_size: 1
+  batch_size: 16
+  optim_str_init: "x x x x x x x x x x x x x x x x x x x x" # all tested tokenizers convert this to exactly 20 tokens
+  epsilon: 100000.
+  alpha: 0.001
   max_new_tokens: 256
-beast:
-  name: beast
-  type: discrete
-  placement: "suffix"
+  embedding_scale: null
+  normalize_alpha: false
+pgd_one_hot:
+  name: pgd_one_hot
+  type: continuous
+  placement: suffix
   generate_completions: all
-  num_steps: 40
+  num_steps: 100
   seed: 0
-  batch_size: 4
-  optim_str_init: ""
-  k1: 15
-  k2: 15
-  temperature: 1.0
+  batch_size: 2
+  optim_str_init: "x x x x x x x x x x x x x x x x x x x x" # all tested tokenizers convert this to exactly 20 tokens
+  epsilon: 100000.
+  momentum: 0.5
+  alpha: 0.001
   max_new_tokens: 256

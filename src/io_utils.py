@@ -71,14 +71,22 @@ def load_model_and_tokenizer(model_params):
             tokenizer.model_max_length = 8192
         case path if "nousresearch/hermes-2-pro-llama-3-8b" in path:
             tokenizer.model_max_length = 8192
+        case path if "llm-lat/robust-llama3-8b-instruct" in path:
+            tokenizer.model_max_length = 8192
         case path if "openchat/openchat_3.5" in path:
             tokenizer.model_max_length = 8192
         case path if 'mistralai/mistral-7b-instruct-v0.3' in path:
+            tokenizer.model_max_length = 32768
+        case path if "mistralai/ministral-8b-instruct-2410" in path:
+            tokenizer.model_max_length = 32768
+        case path if "mistralai/mistral-nemo-instruct-2407" in path:
             tokenizer.model_max_length = 32768
         case path if "gemma-2" in path:
             tokenizer.model_max_length = 8192
         case path if 'zephyr' in path:
             tokenizer.model_max_length = 32768
+    if tokenizer.model_max_length > 262144:
+        raise ValueError(f"Model max length {tokenizer.model_max_length} is too high")
 
     if model_params.chat_template is not None:
         tokenizer.chat_template = load_chat_template(model_params.chat_template)

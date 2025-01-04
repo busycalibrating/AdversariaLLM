@@ -181,8 +181,8 @@ class PGDAttack(Attack):
                 perturbed_embeddings_list[i : i + batch_size] = [
                     [self.select_tokens(pe, tm) for pe, tm in zip(perturbed_embeddings, target_masks_batch)]
                 ]
-        flattened_embeddings = [e for el in perturbed_embeddings_list for e in el]
 
+        flattened_embeddings = [e for el in perturbed_embeddings_list for e in el]
         outputs = generate_ragged_batched(
             model,
             tokenizer,
@@ -190,6 +190,7 @@ class PGDAttack(Attack):
             initial_batch_size=256,
             max_new_tokens=self.config.max_new_tokens,
         )
+
         for i, output in enumerate(outputs):
             completions[i // len(perturbed_embeddings_list[0])].append(output)
         return losses, completions, times
