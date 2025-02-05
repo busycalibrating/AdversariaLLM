@@ -1,5 +1,6 @@
 import logging
 import random
+import string
 from functools import lru_cache
 from typing import Literal
 
@@ -7,7 +8,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm
-from transformers import PreTrainedTokenizerBase, DynamicCache
+from transformers import DynamicCache, PreTrainedTokenizerBase
 
 from src.io_utils import free_vram
 
@@ -113,6 +114,9 @@ def generate_ragged(
     return_tokens=False,
     padding_side="right",
     use_cache=True,
+    temperature=0.0,
+    top_p=1.0,
+    top_k=0,
 ) -> list[str] | torch.Tensor:
     """
     Generate completions for multiple prompts in a single batch.
@@ -154,7 +158,7 @@ def generate_ragged(
     Returns:
         A list of completions for each prompt.
     """
-    if embedding_list is None == token_list is None:
+    if (embedding_list is None) == (token_list is None):
         raise ValueError("One of embedding_list or token_list must be provided.")
     if embedding_list is not None:
         assert all(e.ndim == 2 for e in embedding_list), "Embeddings must be 2D."
@@ -170,6 +174,18 @@ def generate_ragged(
     if use_cache and "gemma-2" in model.name_or_path:
         logging.warning("KV-cache not implemented for Gemma 2. Disabling cache.")
         use_cache = False
+
+    def sample_next_token(logits: torch.Tensor) -> torch.Tensor:
+        if temperature > 0.0:
+            logits = logits / temperature
+            if top_p < 1.0:
+                logits = top_p_filtering(logits, top_p)
+            if top_k > 0:
+                logits = top_k_filtering(logits, top_k)
+            next_tokens = torch.multinomial(logits, num_samples=1)
+        else:
+            next_tokens = logits.argmax(dim=-1)
+        return next_tokens
 
     B = len(embedding_list)
     tokens = []
@@ -209,7 +225,8 @@ def generate_ragged(
                 attention_mask=attention_mask[:, :next_token_idx],
                 position_ids=position_ids[:, :next_token_idx],
             )
-            next_tokens = outputs.logits.argmax(dim=-1)[torch.arange(B), -1]
+            logits = outputs.logits[torch.arange(B), -1]
+            next_tokens = sample_next_token(logits)
             padded_embeddings[torch.arange(B), next_token_idx] = (
                 model.get_input_embeddings()(next_tokens).detach()
             )
@@ -259,11 +276,11 @@ def generate_ragged(
 
                 next_tokens = torch.full((B,), tokenizer.eos_token_id, device=model.device)
                 next_token_idx_active = next_token_idx[active_mask]
-                next_tokens[active_mask] = logits[
+                logits = logits[
                     torch.arange(logits.size(0)),
                     next_token_idx_active - next_token_idx.min()
-                ].argmax(dim=-1)
-
+                ]
+                next_tokens[active_mask] = sample_next_token(logits)
                 padded_embeddings[active_mask_idx, next_token_idx_active] = model.get_input_embeddings()(next_tokens[active_mask])
                 tokens.append(next_tokens.cpu())
                 continue_mask = (next_tokens.cpu() != tokenizer.eos_token_id)[active_mask]
@@ -281,7 +298,8 @@ def generate_ragged(
         else:
             for i in range(max_new_tokens):
                 outputs = model(inputs_embeds=padded_embeddings[:, : next_token_idx.max()])
-                next_tokens = outputs.logits.argmax(dim=-1)[torch.arange(B), next_token_idx - 1]
+                logits = outputs.logits[torch.arange(B), next_token_idx - 1]
+                next_tokens = sample_next_token(logits)
                 padded_embeddings[torch.arange(B), next_token_idx] = (
                     model.get_input_embeddings()(next_tokens).detach()
                 )
@@ -325,7 +343,7 @@ def get_batched_losses(
     Returns:
         A list of completions for each prompt.
     """
-    if embedding_list is None == token_list is None:
+    if (embedding_list is None) == (token_list is None):
         raise ValueError("Either embedding_list or token_list must be provided.")
     if embedding_list is not None:
         assert all(e.ndim == 2 for e in embedding_list), "Embeddings must be 2D."
@@ -505,19 +523,28 @@ def prepare_tokens(
     return pre_tokens, prompt_tokens, attack_tokens, post_tokens, target_tokens
 
 
-def _make_random_chats(n, k=5):
-    generate_random_string = lambda: "".join(
-        random.choices(
-            " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", k=k
-        )
-    )
-    return [
-        [
+def _make_random_chats(n: int, k: int = 5) -> list[list[dict[str, str]]]:
+    """Generate n random chat conversations with k-length messages.
+
+    Returns:
+        List of chat conversations, where each conversation is a list of
+        user/assistant message dictionaries with random content.
+    """
+    chars = string.ascii_letters + string.digits + " "
+
+    def generate_random_string() -> str:
+        return "".join(random.choices(chars, k=k))
+
+    chats = []
+    for _ in range(n):
+        chat = [
             {"role": "user", "content": generate_random_string()},
             {"role": "assistant", "content": generate_random_string()},
         ]
-        for _ in range(n)
-    ]
+        chats.append(chat)
+
+    return chats
+
 
 def _extract_prefix_middle_suffix(vectors):
     def longest_common_prefix(sequences):
@@ -602,3 +629,69 @@ def get_pre_post_suffix_tokens(tokenizer, num_messages):
     test_chats = _make_random_chats(num_messages)
     test_tokenized = tokenize_chats(test_chats, tokenizer)
     return _extract_prefix_middle_suffix(test_tokenized)
+
+
+def top_p_filtering(logits: torch.Tensor, top_p: float) -> torch.Tensor:
+    """Filter logits using nucleus (top-p) sampling.
+
+    Parameters
+    ----------
+    logits: torch.Tensor, shape (B, T, V) or (B, V)
+        The logits to filter.
+    top_p: float
+        The top-p threshold.
+
+    Returns
+    -------
+    torch.Tensor
+    """
+    single_token_only = logits.ndim == 2
+    if single_token_only:
+        logits = logits.unsqueeze(1)
+    sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+    cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+
+    # Remove tokens with cumulative probability above the threshold
+    sorted_indices_to_remove = cumulative_probs > top_p
+    # Shift indices to the right to keep also the first token above the threshold
+    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+    sorted_indices_to_remove[..., 0] = 0
+
+    # Scatter sorted tensors to original indexing
+    indices_to_remove = sorted_indices_to_remove.scatter(
+        1, sorted_indices, sorted_indices_to_remove
+    )
+    if single_token_only:
+        indices_to_remove = indices_to_remove.squeeze(1)
+    logits[indices_to_remove] = float('-inf')
+    return logits
+
+
+def top_k_filtering(logits: torch.Tensor, top_k: int) -> torch.Tensor:
+    """Filter logits using top-k sampling.
+
+    Parameters
+    ----------
+    logits: torch.Tensor, shape (B, T, V) or (B, V)
+        The logits to filter.
+    top_k: int
+        The top-k threshold.
+
+    Returns
+    -------
+    torch.Tensor
+        Filtered logits with values below top-k threshold set to -inf.
+    """
+    single_token_only = logits.ndim == 2
+    if single_token_only:
+        logits = logits.unsqueeze(1)
+
+    values, _ = torch.topk(logits, top_k)
+    # Get minimum value of top-k tokens
+    min_values = values[..., -1, None]
+    # Zero out everything below min values
+    logits[logits < min_values] = float('-inf')
+
+    if single_token_only:
+        logits = logits.squeeze(1)
+    return logits

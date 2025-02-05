@@ -24,13 +24,12 @@ def main(cfg: DictConfig) -> None:
     logging.info(cfg)
 
     paths = []
-    for root, dirs, files in os.walk(cfg.save_dir):
+    for root, _, files in os.walk(cfg.save_dir):
         for file in files:
             if file.endswith("run.json"):
                 if any(root.endswith(s) for s in cfg.suffixes):
                     paths.append(os.path.join(root, file))
     paths.sort(reverse=True)
-
 
     id = cfg.model_name
     model_params = [v for k, v in cfg.models.items() if k == id][0]
@@ -66,7 +65,7 @@ def main(cfg: DictConfig) -> None:
 
                 try:
                     json.dump(updated_runs, open(path, "w"), indent=2)
-                except KeyboardInterrupt as e:
+                except KeyboardInterrupt:
                     json.dump(runs, open(path, "w"), indent=2)
                     break
 

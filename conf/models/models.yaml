@@ -143,7 +143,7 @@ ContinuousAT/Phi-CAT:
   compile: False
   dtype: bfloat16
   chat_template: phi-3
-  trust_remote_code: False  # can't use spda otherwise for some reason!
+  trust_remote_code: False  # can't use torch's spda otherwise for some reason!
 microsoft/Phi-3-mini-4k-instruct:
   id: microsoft/Phi-3-mini-4k-instruct
   tokenizer_id: microsoft/Phi-3-mini-4k-instruct
@@ -152,7 +152,16 @@ microsoft/Phi-3-mini-4k-instruct:
   compile: False
   dtype: bfloat16
   chat_template: phi-3
-  trust_remote_code: False  # can't use spda otherwise for some reason!
+  trust_remote_code: False  # can't use torch's spda otherwise for some reason!
+microsoft/phi-4:
+  id: microsoft/phi-4
+  tokenizer_id: microsoft/phi-4
+  short_name: Phi
+  developer_name: Microsoft
+  compile: False
+  dtype: bfloat16
+  chat_template: null
+  trust_remote_code: False  # can't use torch's spda otherwise for some reason!
 cais/zephyr_7b_r2d2:
   id: cais/zephyr_7b_r2d2
   tokenizer_id: cais/zephyr_7b_r2d2
@@ -197,4 +206,22 @@ lmsys/vicuna-7b-v1.5:
   compile: False
   dtype: bfloat16
   chat_template: vicuna
+  trust_remote_code: True
+mistralai/Mistral-Nemo-Instruct-2407:
+  id: mistralai/Mistral-Nemo-Instruct-2407
+  tokenizer_id: mistralai/Mistral-Nemo-Instruct-2407
+  short_name: Mistral
+  developer_name: Mistral AI
+  compile: False
+  dtype: bfloat16
+  chat_template: null
+  trust_remote_code: True
+mistralai/Ministral-8B-Instruct-2410:
+  id: mistralai/Ministral-8B-Instruct-2410
+  tokenizer_id: mistralai/Ministral-8B-Instruct-2410
+  short_name: Mistral
+  developer_name: Mistral AI
+  compile: False
+  dtype: bfloat16
+  chat_template: null
   trust_remote_code: True

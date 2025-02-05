@@ -29,7 +29,7 @@ class RunConfig:
     config: dict
 
 
-def should_run(cfg: DictConfig, name: str|None) -> list[tuple[str,DictConfig]]:
+def should_run(cfg: DictConfig, name: str | None) -> list[tuple[str, DictConfig]]:
     if name is not None:
         return [(name, cfg[name])]
     return list(cfg.items())

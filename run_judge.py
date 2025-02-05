@@ -1,21 +1,19 @@
 import os
 
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"  # determinism
+import json
 import logging
 import re
-
+import time
 
 import hydra
 import torch
-import json
-import time
-from omegaconf import DictConfig, ListConfig
-
-from src.errors import print_exceptions
 from accelerate.utils import find_executable_batch_size
+from omegaconf import DictConfig, ListConfig
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from src.errors import print_exceptions
 
 torch.use_deterministic_algorithms(True, warn_only=True)  # determinism
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -268,7 +266,7 @@ def is_judged(run, key):
 @print_exceptions
 def main(cfg: DictConfig) -> None:
     logging.info("-------------------")
-    logging.info(f"Commencing judge run")
+    logging.info("Commencing judge run")
     logging.info("-------------------")
     print(cfg)
 
@@ -290,7 +288,7 @@ def main(cfg: DictConfig) -> None:
     tokenizer = AutoTokenizer.from_pretrained(
         model_name,
         use_fast=False,
-        truncation_side="left",
+        truncation_side="right",
         padding_side="left"
     )
 
@@ -300,7 +298,7 @@ def main(cfg: DictConfig) -> None:
         tokenizer.pad_token = tokenizer.eos_token
 
     paths = []
-    for root, dirs, files in os.walk(cfg.save_dir):
+    for root, _, files in os.walk(cfg.save_dir):
         if isinstance(cfg.suffixes, ListConfig):
             if not any(root.endswith(s) for s in cfg.suffixes):
                 continue
@@ -322,7 +320,7 @@ def main(cfg: DictConfig) -> None:
         try:
             try:
                 runs = json.load(open(path))
-            except (json.JSONDecodeError, ValueError) as e:
+            except (json.JSONDecodeError, ValueError):
                 time.sleep(0.5)
                 runs = json.load(open(path))
             updated_runs = [r.copy() for r in runs]
@@ -351,7 +349,7 @@ def main(cfg: DictConfig) -> None:
             raise Exception(f"Error in {path}. Original exception: {e}") from e
         try:
             json.dump(updated_runs, open(path, "w"), indent=2)
-        except KeyboardInterrupt as e:
+        except KeyboardInterrupt:
             json.dump(runs, open(path, "w"), indent=2)
             break
     print(f"Judged {n} completions")

@@ -13,3 +13,7 @@ or_bench:
   name: or_bench
   seed: 0
   idx: null
+xs_test:
+  name: xs_test
+  seed: 0
+  idx: null
