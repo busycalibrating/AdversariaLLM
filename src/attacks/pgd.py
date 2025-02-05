@@ -180,7 +180,7 @@ class PGDAttack(Attack):
                         - self.config.alpha
                         * (self.config.embedding_scale if self.config.normalize_alpha else 1)
                         * perturbed_embeddings.grad.sign()
-                        * (1/perturbed_embeddings.grad.sign().norm(dim=-1, keepdim=True) if self.config.normalize_gradient else 1).nan_to_num(1)
+                        * ((1/perturbed_embeddings.grad.sign().norm(dim=-1, keepdim=True)).nan_to_num(1) if self.config.normalize_gradient else 1)
                         * attack_masks_batch[..., None]
                     )
                     if self.config.projection == "l2":

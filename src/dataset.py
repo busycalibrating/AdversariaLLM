@@ -1,9 +1,10 @@
 from dataclasses import dataclass
+from typing import Sequence
 
 import jailbreakbench as jbb
 import pandas as pd
 import torch
-from typing import Sequence
+from datasets import load_dataset
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -17,13 +18,17 @@ class Dataset(torch.utils.data.Dataset):
                 return AdvBehaviorsDataset
             case "jbb_behaviors":
                 return JBBBehaviorsDataset
+            case "or_bench":
+                return ORBenchDataset
+            case "xs_test":
+                return XSTestDataset
             case _:
                 raise ValueError(f"Unknown dataset: {name}")
 
     def __len__(self):
         raise NotImplementedError
 
-    def __getitem__(self, idx: int) -> tuple[str, str]:
+    def __getitem__(self, idx: int) -> tuple[dict[str, str], str]:
         raise NotImplementedError
 
 
@@ -73,7 +78,7 @@ class AdvBehaviorsDataset(Dataset):
     def __len__(self):
         return len(self.messages)
 
-    def __getitem__(self, idx: int) -> tuple[dict[str], str]:
+    def __getitem__(self, idx: int) -> tuple[dict[str, str], str]:
         msg = self.messages.iloc[idx]
         message = {"role": "user", "content": msg["Behavior"]}
 
@@ -110,10 +115,78 @@ class JBBBehaviorsDataset(Dataset):
     def __len__(self):
         return len(self.messages)
 
-    def __getitem__(self, idx: int) -> tuple[dict[str], str]:
+    def __getitem__(self, idx: int) -> tuple[dict[str, str], str]:
         msg = self.messages.iloc[idx]
         message = {"role": "user", "content": msg}
         target: str = self.targets.iloc[idx]
+        return message, target
+
+
+@dataclass
+class ORBenchConfig:
+    name: str
+    seed: int = 0
+    idx: list[int]|int|None = None
+
+
+class ORBenchDataset(Dataset):
+    def __init__(self, config: ORBenchConfig):
+        self.config = config
+        dataset = load_dataset("bench-llm/or-bench", "or-bench-hard-1k")["train"]
+        dataset = [d["prompt"] for d in dataset]
+        # shuffle
+        torch.manual_seed(config.seed)
+        idx = torch.randperm(len(dataset))
+        if isinstance(config.idx, int):
+            idx = idx[config.idx: config.idx + 1]
+        elif isinstance(config.idx, Sequence):
+            idx = idx[config.idx]
+        elif config.idx is not None:
+            raise ValueError(f"Invalid idx: {config.idx}")
+        self.messages = [dataset[i] for i in idx]
+        self.targets = [""] * len(self.messages)
+
+    def __len__(self):
+        return len(self.messages)
+
+    def __getitem__(self, idx: int) -> tuple[dict[str, str], str]:
+        msg = self.messages[idx]
+        message = {"role": "user", "content": msg}
+        target: str = "ZZZZZ"  # dummy, shouldn't be empty for prepare_tokens
+        return message, target
+
+
+@dataclass
+class XSTestConfig:
+    name: str
+    seed: int = 0
+    idx: list[int]|int|None = None
+
+
+class XSTestDataset(Dataset):
+    def __init__(self, config: XSTestConfig):
+        self.config = config
+        dataset = load_dataset("walledai/XSTest")["test"]
+        dataset = [d["prompt"] for d in dataset if d["label"] == "safe"]
+        # shuffle
+        torch.manual_seed(config.seed)
+        idx = torch.randperm(len(dataset))
+        if isinstance(config.idx, int):
+            idx = idx[config.idx: config.idx + 1]
+        elif isinstance(config.idx, Sequence):
+            idx = idx[config.idx]
+        elif config.idx is not None:
+            raise ValueError(f"Invalid idx: {config.idx}")
+        self.messages = [dataset[i] for i in idx]
+        self.targets = [""] * len(self.messages)
+
+    def __len__(self):
+        return len(self.messages)
+
+    def __getitem__(self, idx: int) -> tuple[dict[str], str]:
+        msg = self.messages[idx]
+        message = {"role": "user", "content": msg}
+        target: str = "ZZZZZ"  # dummy, shouldn't be empty for prepare_tokens
         return message, target
 
 
@@ -139,3 +212,14 @@ if __name__ == "__main__":
         JBBBehaviorsConfig("jbb_behaviors", seed=1)
     )
     print(len(d))
+    d = Dataset.from_name("or_bench")(
+        ORBenchConfig("or_bench", seed=1)
+    )
+
+    print(len(d))
+    d = Dataset.from_name("xs_test")(
+        ORBenchConfig("xs_test", seed=1)
+    )
+    print(len(d))
+    for thing in d:
+        print(thing)

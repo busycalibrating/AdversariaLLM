@@ -60,8 +60,6 @@ class GCGConfig:
 
 
 def get_disallowed_ids(tokenizer, allow_non_ascii, allow_special, device="cpu"):
-    if allow_special and allow_non_ascii:
-        return None
     disallowed_ids = []
 
     def is_ascii(s):
@@ -354,7 +352,7 @@ class GCGAttack(Attack):
                 [optim_embeds, self.post_embeds, self.target_embeds], dim=1
             )
             output = model(
-                inputs_embeds=input_embeds, past_key_values=self.prefix_cache
+                inputs_embeds=input_embeds, past_key_values=self.prefix_cache, use_cache=True
             )
         else:
             input_embeds = torch.cat(
@@ -467,6 +465,7 @@ class GCGAttack(Attack):
                     outputs = model(
                         inputs_embeds=input_embeds_batch,
                         past_key_values=prefix_cache_batch,
+                        use_cache=True,
                     )
                 else:
                     outputs = model(inputs_embeds=input_embeds_batch)
@@ -569,28 +568,6 @@ class SubstitutionSelectionStrategy:
                 *args,
                 **kwargs,
             )
-        elif self.strategy == "single_position":
-            return self._single_position(
-                ids,
-                grad,
-                search_width,
-                topk,
-                n_replace,
-                not_allowed_ids,
-                *args,
-                **kwargs,
-            )
-        elif self.strategy == "cosine_constraint":
-            return self._cosine_constraint(
-                ids,
-                grad,
-                search_width,
-                topk,
-                n_replace,
-                not_allowed_ids,
-                *args,
-                **kwargs,
-            )
         else:
             raise ValueError(f"Invalid replacement selection strategy: {self.strategy}")
 
@@ -601,7 +578,7 @@ class SubstitutionSelectionStrategy:
         search_width: int,
         topk: int = 256,
         n_replace: int = 1,
-        not_allowed_ids: Tensor = False,
+        not_allowed_ids: Tensor|None=None,
     ):
         """Returns `search_width` combinations of token ids based on the token gradient.
         Original GCG does this.
@@ -656,7 +633,7 @@ class SubstitutionSelectionStrategy:
         search_width: int,
         topk: int = 256,
         n_replace: int = 1,
-        not_allowed_ids: Tensor = False,
+        not_allowed_ids: Tensor|None=None,
     ):
         """Returns `search_width` random token substitutions.
 
@@ -683,13 +660,9 @@ class SubstitutionSelectionStrategy:
         if not_allowed_ids is not None:
             grad[:, not_allowed_ids.to(grad.device)] = float("inf")
         # We have 32768 * 20 = 655360 substitutions to evaluate
-        # Here we crop this down with the smallest gradient heuristic to topk * 20
         sampled_ids = torch.randperm(grad.view(-1).numel(), device=grad.device)
-        sampled_ids = sampled_ids[~grad.view(-1)[sampled_ids].isinf()][
-            :search_width
-        ].unsqueeze(
-            1
-        )  # (search_width, 1)
+        sampled_ids = sampled_ids[~grad.view(-1)[sampled_ids].isinf()]
+        sampled_ids = sampled_ids[:search_width].unsqueeze(1)  # (search_width, 1)
 
         sampled_ids_pos = sampled_ids // grad.size(1)
         sampled_topk_idx = sampled_ids % grad.size(1)
@@ -706,7 +679,7 @@ class SubstitutionSelectionStrategy:
         search_width: int,
         topk: int = 256,
         n_replace: int = 1,
-        not_allowed_ids: Tensor = False,
+        not_allowed_ids: Tensor|None = None,
     ):
         """Returns `search_width` combinations of token ids with the lowest token gradient.
 

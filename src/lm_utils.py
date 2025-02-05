@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm
-from transformers import AutoTokenizer, DynamicCache
+from transformers import PreTrainedTokenizerBase, DynamicCache
 
 from src.io_utils import free_vram
 
@@ -154,8 +154,8 @@ def generate_ragged(
     Returns:
         A list of completions for each prompt.
     """
-    if embedding_list is None and token_list is None:
-        raise ValueError("Either embedding_list or token_list must be provided.")
+    if embedding_list is None == token_list is None:
+        raise ValueError("One of embedding_list or token_list must be provided.")
     if embedding_list is not None:
         assert all(e.ndim == 2 for e in embedding_list), "Embeddings must be 2D."
         embedding_list = [e.to(model.device) for e in embedding_list]
@@ -165,6 +165,7 @@ def generate_ragged(
         embedding_list = [
             model.get_input_embeddings()(t.unsqueeze(0))[0] for t in token_list
         ]
+    assert embedding_list is not None
     # TODO: Implement KV-caching for Gemma
     if use_cache and "gemma-2" in model.name_or_path:
         logging.warning("KV-cache not implemented for Gemma 2. Disabling cache.")
@@ -246,7 +247,7 @@ def generate_ragged(
                 # We have to feed more than one token at each forward pass :(.
                 # Instead, we feed a 'window' from the last token of the shortest prompt
                 # to the last token of the longest prompt.
-                # This means that caching works best if all sequences are of similar length.
+                # This means that caching works best when sequences have similar length.
                 active_mask = ~generation_completed
                 active_mask_idx = torch.arange(B)[active_mask]
                 active_embeddings = padded_embeddings[active_mask, next_token_idx.min() - 1 : next_token_idx.max()]
@@ -308,7 +309,7 @@ def get_batched_losses(
     embedding_list=None,
     token_list=None,
     padding_side="right",
-) -> torch.Tensor:
+) -> list[torch.Tensor]:
     """
     Get per-timestep losses for multiple ragged prompts in a single batch.
     No KV-cache for now.
@@ -324,7 +325,7 @@ def get_batched_losses(
     Returns:
         A list of completions for each prompt.
     """
-    if embedding_list is None and token_list is None:
+    if embedding_list is None == token_list is None:
         raise ValueError("Either embedding_list or token_list must be provided.")
     if embedding_list is not None:
         assert all(e.ndim == 2 for e in embedding_list), "Embeddings must be 2D."
@@ -335,6 +336,7 @@ def get_batched_losses(
         embedding_list = [
             model.get_input_embeddings()(t.unsqueeze(0))[0] for t in token_list
         ]
+    assert embedding_list is not None
     assert all(t.ndim == 1 for t in targets), "Targets must be 1D."
     targets = [t.to(model.device) for t in targets]
 
@@ -407,7 +409,7 @@ def get_batched_losses(
 
 
 def prepare_tokens(
-    tokenizer: AutoTokenizer,
+    tokenizer: PreTrainedTokenizerBase,
     prompt: str,
     target: str,
     attack: str | None = None,
@@ -475,7 +477,7 @@ def prepare_tokens(
             if torch.all(
                 prompt_attack_post_target[i : i + len(post_tokens)] == post_tokens
             ):
-                prompt_attack_tokens =  prompt_attack_post_target[:i]
+                prompt_attack_tokens = prompt_attack_post_target[:i]
                 target_tokens = prompt_attack_post_target[i + len(post_tokens) :]
                 break
         if prompt_attack_tokens is not None:
@@ -592,6 +594,7 @@ def tokenize_chats(chats: list[list[dict[str,str]]], tokenizer) -> list[torch.Te
         tokenizer(t, return_tensors="pt", add_special_tokens=True).input_ids[0]
         for t in templates
     ]
+
 
 # Generate random messages to find tokenizer patterns, this is ugly but fast
 @lru_cache()

@@ -50,6 +50,7 @@ def make_metrics_cumulative(runs: pd.DataFrame):
         "pair": np.maximum.accumulate,
         "pgd": lambda x: x,
         "pgd_one_hot": lambda x: x,
+        "prefilling": lambda x: x,
     }
 
     metric_types = {
@@ -61,14 +62,25 @@ def make_metrics_cumulative(runs: pd.DataFrame):
         "asr_prefix": 1,
         "sr_prefix": -1,
     }
-
-    for idx, run in runs.iterrows():
-        for metric in metric_types:
-            if not run_has_metric(run, metric):
+    grouped = runs.groupby("algorithm")
+    for algo, idx in grouped.groups.items():
+        aggregator = aggregator_functions[algo]
+        for metric, sign in metric_types.items():
+            if metric not in runs.columns:
                 continue
-            m = np.array(run[metric]) * metric_types[metric]
-            runs.at[idx, metric] = (aggregator_functions[run["algorithm"]](m) * metric_types[metric]).tolist()
+            mask = runs.loc[idx, metric].notnull()
+            runs.loc[idx[mask], metric] = runs.loc[idx[mask], metric].apply(
+                lambda arr: (aggregator(np.array(arr) * sign) * sign).tolist() if None not in arr else arr
+            )
     return runs
+
+    # for idx, run in runs.iterrows():
+    #     for metric in metric_types:
+    #         if not run_has_metric(run, metric):
+    #             continue
+    #         m = np.array(run[metric]) * metric_types[metric]
+    #         runs.at[idx, metric] = (aggregator_functions[run["algorithm"]](m) * metric_types[metric]).tolist()
+    # return runs
 
 
 def pad_to_max_length(runs: pd.DataFrame):

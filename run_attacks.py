@@ -10,7 +10,7 @@ import torch
 from omegaconf import DictConfig, OmegaConf
 
 from src.attacks import Attack
-from src.datasets import Dataset
+from src.dataset import Dataset
 from src.errors import print_exceptions
 from src.io_utils import load_model_and_tokenizer, log_attack
 

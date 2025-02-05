@@ -17,7 +17,7 @@ import pandas as pd
 from joblib import Parallel, delayed
 
 pd.options.mode.chained_assignment = None  # default='warn'
-from datasets.dataset import AdvBehaviorsConfig, Dataset
+from dataset import AdvBehaviorsConfig, Dataset
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(__file__))
 
@@ -65,9 +65,16 @@ def main(args):
                 return False
             if not all(len(c) == len(s) for c, s in zip(completions, successes)):
                 return False
-            # Should either only be yes/no predictions or floats if probs
-            if not (all(all(j in ["Yes", "No"] for j in s) for s in successes) or all(all(isinstance(j, float) for j in s) for s in successes)):
-                return False
+            if "p_harmful" in key:
+                if not all(all(isinstance(p, float) for p in s) for s in successes):
+                    return False
+            elif "successes" in key:
+                if "overrefusal" in key:
+                    if not all(all(j in ["direct_answer", "direct_refusal", "indirect_refusal"] for j in s) for s in successes):
+                        return False
+                else:
+                    if not all(all(j in ["Yes", "No"] for j in s) for s in successes):
+                        return False
             return True
 
         try:
@@ -102,7 +109,7 @@ def main(args):
                 config = run["config"]
                 algorithm = config["attack"]
                 model = config["model"]
-                if "13" in model:
+                if "13" in model or "Sicarius" in model:
                     continue
                 dataset = config["dataset"]
 

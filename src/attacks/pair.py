@@ -235,30 +235,30 @@ class HuggingFace:
         )
         if "llama-2" in self.tokenizer.name_or_path.lower():
             inputs = fix_llama2_tokens(inputs)
-        inputs = {k: v.to(self.model.device.index) for k, v in inputs.items()}
+        batch_size = 2
+        outputs_list = []
 
-        # Batch generation
-        output_ids = self.model.generate(
-            **inputs,
+        for i in range(0, len(inputs["input_ids"]), batch_size):
+            batch_inputs = {k: v[i:i + batch_size].to(self.model.device.index) for k, v in inputs.items()}
+
+            # Batch generation
+            batch_output_ids = self.model.generate(
+            **batch_inputs,
             max_new_tokens=max_new_tokens,
             do_sample=temperature > 0,
             eos_token_id=self.eos_token_ids,
             temperature=temperature if temperature > 0 else 1,
             top_p=top_p if temperature > 0 else 1,
             pad_token_id=self.tokenizer.eos_token_id,
-        )
-
-        # If the model is not an encoder-decoder type, slice off the input tokens
-        if not self.model.config.is_encoder_decoder:
-            output_ids = output_ids[:, inputs["input_ids"].shape[1] :]
-
-        # Batch decoding
-        outputs_list = self.tokenizer.batch_decode(output_ids, skip_special_tokens=True)
+            )
+            # If the model is not an encoder-decoder type, slice off the input tokens
+            if not self.model.config.is_encoder_decoder:
+                batch_output_ids = batch_output_ids[:, inputs["input_ids"].shape[1] :]
+            outputs_list.extend(self.tokenizer.batch_decode(batch_output_ids, skip_special_tokens=True))
 
         for key in inputs:
             inputs[key].to("cpu")
-        output_ids.to("cpu")
-        del inputs, output_ids
+        del inputs, batch_output_ids
         gc.collect()
         torch.cuda.empty_cache()
 

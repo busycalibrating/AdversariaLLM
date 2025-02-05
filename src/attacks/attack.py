@@ -80,7 +80,7 @@ class Attack:
     def run(
         self,
         model: transformers.AutoModelForCausalLM,
-        tokenizer: transformers.AutoTokenizer,
+        tokenizer: transformers.PreTrainedTokenizerBase,
         dataset: Dataset,
     ) -> AttackResult:
         raise NotImplementedError

@@ -8,7 +8,7 @@ import torch
 import transformers
 
 from src.attacks import Attack, AttackResult
-from src.lm_utils import generate_ragged, get_batched_losses, prepare_tokens
+from src.lm_utils import generate_ragged_batched, get_batched_losses, prepare_tokens
 
 
 @dataclass
@@ -54,14 +54,19 @@ class DirectAttack(Attack):
             for i in range(0, len(lst), n):
                 yield lst[i : i + n]
 
+        t0 = time.time()
+        completions = generate_ragged_batched(
+            model,
+            tokenizer,
+            token_list=[torch.cat([a, b, c, d], dim=0) for a, b, c, d, e in token_lists],
+            max_new_tokens=self.config.max_new_tokens,
+            initial_batch_size=min(256, len(token_lists)),
+        )
+        for c in completions:
+            result.completions.append([c])
+            result.times.append([time.time() - t0])
+
         for chunk in chunks(token_lists, self.config.batch_size):
-            t0 = time.time()
-            completions = generate_ragged(
-                model,
-                tokenizer,
-                token_list=[torch.cat([a, b, c, d], dim=0) for a, b, c, d, e in chunk],
-                max_new_tokens=self.config.max_new_tokens,
-            )
             token_list = [torch.cat(tokens, dim=0) for tokens in chunk]
             targets = [t.roll(-1, 0) for t in token_list]
             losses = get_batched_losses(model, targets, token_list=token_list)
@@ -69,8 +74,6 @@ class DirectAttack(Attack):
                 l[-tl:].mean().item()
                 for l, tl in zip(losses, [e.size(0) for a, b, c, d, e in chunk])
             ]
-            for l, c in zip(losses, completions):
+            for l in zip(losses):
                 result.losses.append([l])
-                result.completions.append([c])
-                result.times.append([time.time() - t0])
         return result

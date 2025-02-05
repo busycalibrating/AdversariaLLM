@@ -32,7 +32,7 @@ def load_model_and_tokenizer(model_params):
 
         model = AutoModelForCausalLM.from_pretrained(
             model_params.id,
-            trust_remote_code=True,
+            trust_remote_code=model_params.trust_remote_code,
             quantization_config=quantization_config,
         ).eval()
     else:
