@@ -5,15 +5,19 @@ adv_behaviors:
   categories: ['chemical_biological', 'illegal', 'misinformation_disinformation', 'harmful', 'harassment_bullying', 'cybercrime_intrusion'] #,'copyright']
   seed: 0
   idx: null
+  batch: null
 jbb_behaviors:
   name: jbb_behaviors
   seed: 0
   idx: null
+  batch: null
 or_bench:
   name: or_bench
   seed: 0
   idx: null
+  batch: null
 xs_test:
   name: xs_test
   seed: 0
   idx: null
+  batch: null

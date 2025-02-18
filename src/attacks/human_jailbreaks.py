@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 import torch
-import transformers
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from tqdm import trange
 
 from src.attacks import Attack, AttackResult
@@ -28,9 +28,10 @@ class HumanJailbreaksAttack(Attack):
     @torch.no_grad
     def run(
         self,
-        model: transformers.AutoModelForCausalLM,
-        tokenizer: transformers.AutoTokenizer,
+        model: AutoModelForCausalLM,
+        tokenizer: AutoTokenizer,
         dataset: torch.utils.data.Dataset,
+        log_full_results: bool = False,
     ) -> AttackResult:
         result = AttackResult([], [], [], [])
         for msg, target in dataset:

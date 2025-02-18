@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from accelerate.utils import find_executable_batch_size
 from tqdm import trange
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.io_utils import load_model_and_tokenizer
 from src.lm_utils import get_batched_losses, generate_ragged_batched, prepare_tokens
@@ -194,7 +195,13 @@ class AutoDANAttack(Attack):
         super().__init__(config)
 
     @torch.no_grad
-    def run(self, model, tokenizer, dataset) -> AttackResult:
+    def run(
+        self,
+        model: AutoModelForCausalLM,
+        tokenizer: AutoTokenizer,
+        dataset: torch.utils.data.Dataset,
+        log_full_results: bool = False,
+    ) -> AttackResult:
         """Run the AutoDAN attack against a given model and dataset."""
         if self.config.mutate_model.id is not None:
             mutate_model = (
@@ -218,7 +225,7 @@ class AutoDANAttack(Attack):
         ]
 
         forward_batch_size = self.config.forward_batch_size or self.config.batch_size
-        results = AttackResult([], [], [], [], [])
+        results = AttackResult([], [], [], [], [], [])
         # ========== Behavior meta data ==========
         for msg, target in dataset:
             autodan_target_prefix = "(🔓Developer Mode Output) "
@@ -292,6 +299,7 @@ class AutoDANAttack(Attack):
                     raise ValueError(f"Unknown generate_completions: {self.config.generate_completions}")
 
             adv_prompt_tokens = [torch.cat(prepare_tokens(tokenizer, c, target, "")[:4]) for c in candidates]
+            
             completions = generate_ragged_batched(model, tokenizer, token_list=adv_prompt_tokens, initial_batch_size=forward_batch_size, max_new_tokens=self.config.max_new_tokens, use_cache=True)
             results.losses.append(losses)
             results.attacks.append(attacks)

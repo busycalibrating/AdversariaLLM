@@ -2,5 +2,7 @@ outputs/
 *.pyc
 __pycache__
 multirun/
-.vscode/settings.json
+.vscode/
 outputs_archive
+*.egg-info/
+venv

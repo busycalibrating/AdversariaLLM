@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from accelerate.utils import find_executable_batch_size
 from tqdm import trange
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from src.lm_utils import generate_ragged_batched, prepare_tokens
 
 from .attack import Attack, AttackResult
@@ -40,7 +41,13 @@ class PGDOneHotAttack(Attack):
         elif self.config.placement == "prompt":
             assert not self.config.optim_str_init
 
-    def run(self, model: torch.nn.Module, tokenizer, dataset) -> AttackResult:
+    def run(
+        self,
+        model: AutoModelForCausalLM,
+        tokenizer: AutoTokenizer,
+        dataset: torch.utils.data.Dataset,
+        log_full_results: bool = False,
+    ) -> AttackResult:
         num_examples = len(dataset)
 
         x: list = []

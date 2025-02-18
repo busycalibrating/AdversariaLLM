@@ -1,10 +1,45 @@
 from dataclasses import dataclass
+import logging
 from typing import Sequence
 
 import jailbreakbench as jbb
 import pandas as pd
 import torch
 from datasets import load_dataset
+
+logger = logging.getLogger(__name__)
+
+
+def _get_selected_idx(idx, batch: int = None, max_dataset_size: int = None):
+    """Handles creating a sequence of indices for selecting a sequential batch of data
+
+    Args:
+        idx (int, list): If batching, the starting index. If not batching, a list of indices or single int.
+        batch (int, optional): Number of elements to batch . Defaults to None.
+        max_dataset_size (int, optional)
+    """
+    # handle batching inputs
+    if batch is not None:
+        if isinstance(idx, Sequence):
+            raise ValueError("Cannot use config.batch with a sequence of indices")
+        selected_idx = list(range(idx, min(idx + batch, max_dataset_size)))
+        return selected_idx
+    return idx
+
+def _shuffle_and_select_idx(selected_idx: int|Sequence, seed: int, dataset_size: int):
+    torch.manual_seed(seed)
+    idx = torch.randperm(dataset_size)
+
+    # We keep this shuffle for backwards compatibility
+    if isinstance(selected_idx, int):
+        idx = idx[selected_idx:selected_idx + 1]
+    elif isinstance(selected_idx, Sequence):
+        idx = idx[selected_idx]
+        logger.info(f"Selected subset of data: {selected_idx}")
+    elif selected_idx is not None:
+        raise ValueError(f"Invalid idx: {selected_idx}")
+    logger.info(f"Selected all data: {len(idx)}")
+    return idx
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -32,14 +67,19 @@ class Dataset(torch.utils.data.Dataset):
         raise NotImplementedError
 
 
+@dataclass(kw_only=True)
+class BaseDataConfig:
+    seed: int = 0
+    idx: list[int]|int|None = None
+    batch: int|None = None
+
+
 @dataclass
-class AdvBehaviorsConfig:
+class AdvBehaviorsConfig(BaseDataConfig):
     name: str
     messages_path: str
     targets_path: str
     categories: list[str]
-    seed: int = 0
-    idx: list[int]|int|None = None
 
 
 class AdvBehaviorsDataset(Dataset):
@@ -61,16 +101,9 @@ class AdvBehaviorsDataset(Dataset):
         self.targets = self.messages[self.messages.columns[-1]].map(targets)
         assert len(self.messages) == len(self.targets), "Mismatched lengths"
 
-        # shuffle
-        torch.manual_seed(config.seed)
-        idx = torch.randperm(len(self.messages))
-        # We keep this shuffle for backwards compatibility
-        if isinstance(config.idx, int):
-            idx = idx[config.idx:config.idx + 1]
-        elif isinstance(config.idx, Sequence):
-            idx = idx[config.idx]
-        elif config.idx is not None:
-            raise ValueError(f"Invalid idx: {config.idx}")
+        selected_idx = _get_selected_idx(config.idx, config.batch, len(self.messages))
+        idx = _shuffle_and_select_idx(selected_idx, config.seed, len(self.messages))
+
         # cut
         self.messages = self.messages.iloc[idx].reset_index(drop=True)
         self.targets = self.targets.iloc[idx].reset_index(drop=True)
@@ -89,10 +122,8 @@ class AdvBehaviorsDataset(Dataset):
 
 
 @dataclass
-class JBBBehaviorsConfig:
+class JBBBehaviorsConfig(BaseDataConfig):
     name: str
-    seed: int = 0
-    idx: list[int]|int|None = None
 
 
 class JBBBehaviorsDataset(Dataset):
@@ -101,14 +132,9 @@ class JBBBehaviorsDataset(Dataset):
         dataset = jbb.read_dataset().as_dataframe()
 
         # shuffle
-        torch.manual_seed(config.seed)
-        idx = torch.randperm(len(dataset))
-        if isinstance(config.idx, int):
-            idx = idx[config.idx:config.idx + 1]
-        elif isinstance(config.idx, Sequence):
-            idx = idx[config.idx]
-        elif config.idx is not None:
-            raise ValueError(f"Invalid idx: {config.idx}")
+        selected_idx = _get_selected_idx(config.idx, config.batch, len(dataset))
+        idx = _shuffle_and_select_idx(selected_idx, config.seed, len(dataset))
+
         self.messages = dataset.Goal.iloc[idx].reset_index(drop=True)
         self.targets = dataset.Target.iloc[idx].reset_index(drop=True)
 
@@ -123,10 +149,8 @@ class JBBBehaviorsDataset(Dataset):
 
 
 @dataclass
-class ORBenchConfig:
+class ORBenchConfig(BaseDataConfig):
     name: str
-    seed: int = 0
-    idx: list[int]|int|None = None
 
 
 class ORBenchDataset(Dataset):
@@ -134,15 +158,11 @@ class ORBenchDataset(Dataset):
         self.config = config
         dataset = load_dataset("bench-llm/or-bench", "or-bench-hard-1k")["train"]
         dataset = [d["prompt"] for d in dataset]
+
         # shuffle
-        torch.manual_seed(config.seed)
-        idx = torch.randperm(len(dataset))
-        if isinstance(config.idx, int):
-            idx = idx[config.idx: config.idx + 1]
-        elif isinstance(config.idx, Sequence):
-            idx = idx[config.idx]
-        elif config.idx is not None:
-            raise ValueError(f"Invalid idx: {config.idx}")
+        selected_idx = _get_selected_idx(config.idx, config.batch, len(dataset))
+        idx = _shuffle_and_select_idx(selected_idx, config.seed, len(dataset))
+
         self.messages = [dataset[i] for i in idx]
         self.targets = [""] * len(self.messages)
 
@@ -157,10 +177,8 @@ class ORBenchDataset(Dataset):
 
 
 @dataclass
-class XSTestConfig:
+class XSTestConfig(BaseDataConfig):
     name: str
-    seed: int = 0
-    idx: list[int]|int|None = None
 
 
 class XSTestDataset(Dataset):
@@ -168,15 +186,11 @@ class XSTestDataset(Dataset):
         self.config = config
         dataset = load_dataset("walledai/XSTest")["test"]
         dataset = [d["prompt"] for d in dataset if d["label"] == "safe"]
+
         # shuffle
-        torch.manual_seed(config.seed)
-        idx = torch.randperm(len(dataset))
-        if isinstance(config.idx, int):
-            idx = idx[config.idx: config.idx + 1]
-        elif isinstance(config.idx, Sequence):
-            idx = idx[config.idx]
-        elif config.idx is not None:
-            raise ValueError(f"Invalid idx: {config.idx}")
+        selected_idx = _get_selected_idx(config.idx, config.batch, len(dataset))
+        idx = _shuffle_and_select_idx(selected_idx, config.seed, len(dataset))
+
         self.messages = [dataset[i] for i in idx]
         self.targets = [""] * len(self.messages)
 

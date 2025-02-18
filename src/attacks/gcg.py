@@ -27,6 +27,7 @@ import transformers
 from accelerate.utils import find_executable_batch_size
 from torch import Tensor
 from tqdm import trange
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.lm_utils import generate_ragged_batched, prepare_tokens
 
@@ -155,9 +156,15 @@ class GCGAttack(Attack):
             self.logger.addHandler(handler)
             self.logger.setLevel(logging.INFO)
 
-    def run(self, model, tokenizer, dataset) -> AttackResult:
+    def run(
+        self,
+        model: AutoModelForCausalLM,
+        tokenizer: AutoTokenizer,
+        dataset: torch.utils.data.Dataset,
+        log_full_results: bool = False,
+    ) -> AttackResult:
         not_allowed_ids = get_disallowed_ids(tokenizer, self.config.allow_non_ascii, self.config.allow_special, device=model.device)
-        results = AttackResult([], [], [], [], [])
+        results = AttackResult([], [], [], [], [], [])
         for msg, target in dataset:
             msg: dict[str, str]
             target: str
@@ -310,12 +317,17 @@ class GCGAttack(Attack):
                 tokenizer,
                 token_list=token_list,
                 initial_batch_size=self.config.batch_size,
-                max_new_tokens=self.config.max_new_tokens
+                max_new_tokens=self.config.max_new_tokens,
+                return_full_output=log_full_results
             )
             results.losses.append(losses)
             results.attacks.append(optim_strings)
             results.prompts.append(msg)
-            results.completions.append(completions)
+            if log_full_results:
+                results.completions.append(completions.completions)
+                results.completions_toks.append(completions.tokens)
+            else:
+                results.completions.append(completions)
             results.times.append(times)
         return results
 

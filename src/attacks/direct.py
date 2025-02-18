@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Literal, Optional
 
 import torch
-import transformers
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.attacks import Attack, AttackResult
 from src.lm_utils import generate_ragged_batched, get_batched_losses, prepare_tokens
@@ -30,11 +30,12 @@ class DirectAttack(Attack):
     @torch.no_grad
     def run(
         self,
-        model: transformers.AutoModelForCausalLM,
-        tokenizer: transformers.AutoTokenizer,
+        model: AutoModelForCausalLM,
+        tokenizer: AutoTokenizer,
         dataset: torch.utils.data.Dataset,
+        log_full_results: bool = False,
     ) -> AttackResult:
-        result = AttackResult([], [], [], [], [])
+        result = AttackResult([], [], [], [], [], [])
         token_lists = []
         for msg, target in dataset:
             result.prompts.append(msg)

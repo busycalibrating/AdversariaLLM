@@ -1,0 +1,31 @@
+defaults:
+  - attacks: attacks
+  - datasets: datasets
+  - models: models
+  # - paths
+  - override hydra/launcher: mila_generic
+  - _self_
+
+hydra:
+#   mode: MULTIRUN
+#   sweeper:
+#     params:
+#       datasets.adv_behaviors.idx: "range(0,300)"
+  run:
+    dir: ${root_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}/
+  job:
+    chdir: true
+  sweep:
+    dir: ${root_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}/
+
+name: RF_phi3-5
+root_dir: ${oc.env:PWD}
+save_dir: ${root_dir}/outputs/
+log_file_path: ${save_dir}/redflag_phi3-5/${attack_name}/run-${datasets.adv_behaviors.idx}__${now:%H-%M-%S}.json 
+
+log_toks_strs: True
+
+# overrides for parallelism
+attack_name: gcg
+dataset_name: adv_behaviors
+model_name: redflag-tokens/phi3-5-rf

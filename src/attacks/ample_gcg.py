@@ -9,6 +9,7 @@ import torch.nn as nn
 from accelerate.utils import find_executable_batch_size
 from tqdm import trange
 from transformers import GenerationConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.io_utils import free_vram, load_model_and_tokenizer
 from src.lm_utils import get_batched_losses, generate_ragged_batched, prepare_tokens
@@ -52,8 +53,14 @@ class AmpleGCGAttack(Attack):
         super().__init__(config)
 
     @torch.no_grad
-    def run(self, model: torch.nn.Module, tokenizer, dataset) -> AttackResult:
-        results = AttackResult([], [], [], [], [])
+    def run(
+        self,
+        model: AutoModelForCausalLM,
+        tokenizer: AutoTokenizer,
+        dataset: torch.utils.data.Dataset,
+        log_full_results: bool = False,
+    ) -> AttackResult:
+        results = AttackResult([], [], [], [], [], [])
         for msg, target in dataset:
             # Temporarily move target model to cpu
             device = model.device
@@ -79,12 +86,17 @@ class AmpleGCGAttack(Attack):
                 tokenizer,
                 token_list=token_list,
                 initial_batch_size=self.config.target_lm.batch_size,
-                max_new_tokens=self.config.target_lm.max_new_tokens
+                max_new_tokens=self.config.target_lm.max_new_tokens,
+                log_full_results=log_full_results,
             )
             results.attacks.append(attacks)
             results.losses.append(losses)
             results.prompts.append(msg)
-            results.completions.append(completions)
+            if log_full_results:
+                results.completions.append(completions.completions)
+                results.completions_toks.append(completions.completions_toks)
+            else:
+                results.completions.append(completions)
             results.times.append(time.time() - t0)
         return results
 

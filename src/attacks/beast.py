@@ -44,6 +44,13 @@ class BEASTAttack(Attack):
         ), "Temperature must be greater than 0 for BEAST"
 
     @torch.no_grad()
+    def run(
+        self,
+        model: AutoModelForCausalLM,
+        tokenizer: AutoTokenizer,
+        dataset: torch.utils.data.Dataset,
+        log_full_results: bool = False,
+    ) -> AttackResult:
     def run(self, model: AutoModelForCausalLM, tokenizer: AutoTokenizer, dataset) -> AttackResult:
         """
         Runs the BEASTAttack on a given model and dataset.

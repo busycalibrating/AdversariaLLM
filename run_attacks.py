@@ -35,13 +35,28 @@ def should_run(cfg: DictConfig, name: str | None) -> list[tuple[str, DictConfig]
     return list(cfg.items())
 
 
+def validate_cfg(cfg):
+    if cfg.model_name not in cfg.models.keys():
+        raise ValueError(f"Model `{cfg.model_name}` not found in config; should be one of {cfg.models.keys()}")
+    if cfg.dataset_name not in cfg.datasets.keys():
+        raise ValueError(f"Dataset `{cfg.dataset_name}` not found in config; should be one of {cfg.datasets.keys()}")
+    if cfg.attack_name not in cfg.attacks.keys():
+        raise ValueError(f"Attack `{cfg.attack_name}` not found in config; should be one of {cfg.attacks.keys()}")
+
+
 @hydra.main(config_path="./conf", config_name="config", version_base="1.3")
 @print_exceptions
 def main(cfg: DictConfig) -> None:
     date_time_string = datetime.now().strftime("%Y-%m-%d/%H-%M-%S")
-    log_file_path = os.path.join(cfg.save_dir, f"{date_time_string}/run.json")
+    if cfg.log_file_path is None:
+        log_file_path = os.path.join(cfg.save_dir, f"{date_time_string}/run.json")
+    else:
+        log_file_path = cfg.log_file_path
+    validate_cfg(cfg)
+
     logging.info("-------------------")
     logging.info(f"Commencing run `{date_time_string}`")
+    logging.info(f"Saving to: {log_file_path}")
     logging.info("-------------------")
 
     models_to_run = should_run(cfg.models, cfg.model_name)
@@ -51,14 +66,17 @@ def main(cfg: DictConfig) -> None:
     for model_name, model_params in models_to_run:
         logging.info(f"Target: {model_name}\n{OmegaConf.to_yaml(model_params)}")
         model, tokenizer = load_model_and_tokenizer(model_params)
+
         for dataset_name, dataset_params in datasets_to_run:
             logging.info(f"Dataset: {dataset_name}\n{OmegaConf.to_yaml(dataset_params)}")
             dataset = Dataset.from_name(dataset_name)(dataset_params)
+
             for attack_name, attack_params in attacks_to_run:
                 logging.info(f"Attack: {attack_name}\n{OmegaConf.to_yaml(attack_params)}")
-                attack = Attack.from_name(attack_name)(attack_params)
 
-                results = attack.run(model, tokenizer, dataset)
+                attack = Attack.from_name(attack_name)(attack_params)
+                results = attack.run(model, tokenizer, dataset, log_full_results=cfg.log_toks_strs)
+
                 # get combined config for this run
                 run_config = RunConfig(
                     model_name,
@@ -69,6 +87,7 @@ def main(cfg: DictConfig) -> None:
                     attack_params,
                     cfg,
                 )
+
                 log_attack(run_config, results, log_file_path)
 
 

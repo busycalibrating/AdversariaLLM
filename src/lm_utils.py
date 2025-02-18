@@ -1,6 +1,7 @@
 import logging
 import random
 import string
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Literal
 
@@ -96,12 +97,38 @@ def with_max_batchsize(function, input, initial_batch_size=128):
                     "OOM even with batch_size=1; cannot generate further."
                 )
     pbar.close()
-    if all(isinstance(x, torch.Tensor) for x in outputs):
+
+    if all(isinstance(x, GenerateResults) for x in outputs):
+        # TODO: hacky for now to flatten the list of GenerateResults
+        _completions, _tokens = [], []
+        for output in outputs:
+            completions, tokens = output.lists()
+            _completions.extend(completions)
+            _tokens.extend(tokens)
+        outputs = GenerateResults(completions=_completions, tokens=_tokens)
+
+    elif all(isinstance(x, torch.Tensor) for x in outputs):
         outputs = torch.cat(outputs, dim=0)
+
     else:
         outputs = [item for sublist in outputs for item in sublist]
+
     assert len(outputs) == len(input)
     return outputs
+
+
+@dataclass
+class GenerateResults:
+    completions: list[str]|None = None
+    tokens: torch.Tensor | list[list[int]] | None = None
+
+    def __len__(self):
+        return len(self.completions)
+
+    def lists(self):
+        if isinstance(self.tokens, torch.Tensor):
+            return self.completions, self.tokens.tolist()
+        return self.completions, self.tokens
 
 
 @torch.no_grad
@@ -117,7 +144,8 @@ def generate_ragged(
     temperature=0.0,
     top_p=1.0,
     top_k=0,
-) -> list[str] | torch.Tensor:
+    return_full_output=False,
+) -> list[str] | torch.Tensor | GenerateResults:
     """
     Generate completions for multiple prompts in a single batch.
     No KV-cache for left-padding yet.
@@ -317,6 +345,8 @@ def generate_ragged(
         return tokens
     completion = tokenizer.batch_decode(tokens, skip_special_tokens=False)
     completion = [c.split(tokenizer.eos_token)[0] for c in completion]
+    if return_full_output:
+        return GenerateResults(completions=completion, tokens=tokens)
     return completion
 
 

@@ -24,6 +24,7 @@ class AttackResult:
     prompts: list[str]
     completions: list[list[int | None]] = None
     times: list[list[float]] = None
+    completions_toks: list[list[int | None]] = None
 
 
 class Attack:
@@ -82,5 +83,6 @@ class Attack:
         model: transformers.AutoModelForCausalLM,
         tokenizer: transformers.PreTrainedTokenizerBase,
         dataset: Dataset,
+        log_full_results: bool = False,
     ) -> AttackResult:
         raise NotImplementedError

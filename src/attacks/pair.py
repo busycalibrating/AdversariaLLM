@@ -9,7 +9,7 @@ from typing import Literal, Optional
 
 import time
 import torch
-import transformers
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from tqdm import trange
 
 from src.io_utils import load_model_and_tokenizer
@@ -67,11 +67,12 @@ class PAIRAttack(Attack):
 
     def run(
         self,
-        model: transformers.AutoModelForCausalLM,
-        tokenizer: transformers.AutoTokenizer,
+        model: AutoModelForCausalLM,
+        tokenizer: AutoTokenizer,
         dataset: torch.utils.data.Dataset,
+        log_full_results: bool = False,
     ) -> AttackResult:
-        results = AttackResult([], [], [], [], [])
+        results = AttackResult([], [], [], [], [], [])
 
         for msg, target in dataset:
             # prepare tokens
@@ -280,7 +281,7 @@ class AttackLM:
     def __init__(
         self,
         model: HuggingFace,
-        tokenizer: transformers.AutoTokenizer,
+        tokenizer: AutoTokenizer,
         cfg,
     ):
         self.model = model
@@ -395,7 +396,7 @@ class TargetLM:
     def __init__(
         self,
         model: HuggingFace,
-        tokenizer: transformers.AutoTokenizer,
+        tokenizer: AutoTokenizer,
         cfg,
     ):
         self.model = model

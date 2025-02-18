@@ -25,7 +25,7 @@ def main(args):
     t0 = time.time()
     d = Dataset.from_name("adv_behaviors")(
         AdvBehaviorsConfig(
-            "adv_behaviors",
+            name="adv_behaviors",
             messages_path=os.path.join(PROJECT_DIR, "data/behavior_datasets/harmbench_behaviors_text_all.csv"),
             targets_path=os.path.join(PROJECT_DIR, "data/optimizer_targets/harmbench_targets_text.json"),
             seed=0,

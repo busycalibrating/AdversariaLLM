@@ -8,14 +8,50 @@ from dataclasses import asdict
 import torch
 from omegaconf import OmegaConf
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from peft import PeftConfig, AutoPeftModelForCausalLM, get_peft_model
 
 from src.attacks import AttackResult
+
+
+def _load_merge_peft(model_name, peft_name, manual_untie_embeddings=False, dtype=None):
+    # TODO: validate loading LoRA of tied embeddings
+
+    config = PeftConfig.from_pretrained(peft_name)
+    if manual_untie_embeddings:
+        ref_model = AutoModelForCausalLM.from_pretrained(
+            model_name, torch_dtype=dtype, tie_word_embeddings=False, device_map="auto"
+        ).eval()
+
+        ref_model.lm_head.weight.data = ref_model.model.embed_tokens.weight.data.clone()
+
+        # load lora 
+        model_lora = get_peft_model(ref_model, config)
+        model = model_lora.from_pretrained(
+            ref_model, peft_name, is_trainable=False, tie_word_embeddings=True
+        )
+
+        assert torch.equal(
+            model.model.lm_head.weight.data, 
+            model.model.model.embed_tokens.weight.data
+        )
+        # TODO: this currently makes the lm_head and embed_tokens different!
+        model = model.merge_and_unload()  
+        return model
+
+    model = AutoPeftModelForCausalLM.from_pretrained(
+        peft_name, torch_dtype=dtype, device_map="auto"
+    ).eval()
+    model = model.merge_and_unload(safe_merge=True)
+    return model
 
 
 def load_model_and_tokenizer(model_params):
     gc.collect()
     torch.cuda.empty_cache()
     if "float" not in model_params.dtype:
+        if "lora_cfg" in model_params.keys():
+            raise NotImplementedError("LoRA is not supported for non-float models yet")
+
         if model_params.dtype == "int4":
             quantization_config = BitsAndBytesConfig(
                 load_in_4bit=True,
@@ -36,15 +72,22 @@ def load_model_and_tokenizer(model_params):
             quantization_config=quantization_config,
         ).eval()
     else:
-        model = AutoModelForCausalLM.from_pretrained(
-            model_params.id,
-            torch_dtype=getattr(torch, model_params.dtype),
-            trust_remote_code=model_params.trust_remote_code,
-            low_cpu_mem_usage=True,
-            device_map="auto",
-        ).eval()
-    if model_params.compile:
-        model = torch.compile(model)
+        if "lora_cfg" in model_params.keys() and model_params.lora_cfg.merge_lora:
+            model = _load_merge_peft(
+                model_params.lora_cfg.base_name,
+                model_params.id,
+                manual_untie_embeddings=model_params.lora_cfg.manual_untie_embeddings,
+                dtype=getattr(torch, model_params.dtype)
+            ).eval()
+        else:
+            model = AutoModelForCausalLM.from_pretrained(
+                model_params.id,
+                torch_dtype=getattr(torch, model_params.dtype),
+                trust_remote_code=model_params.trust_remote_code,
+                low_cpu_mem_usage=True,
+                device_map="auto",
+            ).eval()
+
 
     model.config.short_name = model_params.short_name
     model.config.developer_name = model_params.developer_name
