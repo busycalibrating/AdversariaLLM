@@ -18,6 +18,7 @@ name: testing
 save_dir: ${root_dir}/outputs/
 log_file_path: null  # auto set with date
 log_toks_strs: False
+hf_offline_mode: True
 
 # overrides for parallelism
 attack_name: null

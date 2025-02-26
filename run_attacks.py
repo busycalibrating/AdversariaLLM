@@ -54,6 +54,10 @@ def main(cfg: DictConfig) -> None:
         log_file_path = cfg.log_file_path
     validate_cfg(cfg)
 
+    if cfg.hf_offline_mode:
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")
+        logging.info(f"HF Offline Mode: {os.environ.get('HF_HUB_OFFLINE')}")
+
     logging.info("-------------------")
     logging.info(f"Commencing run `{date_time_string}`")
     logging.info(f"Saving to: {log_file_path}")

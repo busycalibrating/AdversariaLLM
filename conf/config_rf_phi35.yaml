@@ -24,6 +24,7 @@ save_dir: ${root_dir}/outputs/
 log_file_path: ${save_dir}/redflag_phi3-5/${attack_name}/run-${datasets.adv_behaviors.idx}__${now:%H-%M-%S}.json 
 
 log_toks_strs: True
+hf_offline_mode: True
 
 # overrides for parallelism
 attack_name: gcg

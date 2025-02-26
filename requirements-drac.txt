@@ -2,8 +2,8 @@ accelerate
 hydra-core >=1.3.0
 hydra-submitit-launcher
 matplotlib
-jailbreakbench
 omegaconf >=2.1.0
+peft
 scikit-learn
 seaborn
 submitit
