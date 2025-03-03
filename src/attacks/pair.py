@@ -17,6 +17,7 @@ from src.io_utils import load_model_and_tokenizer
 from .attack import Attack, AttackResult
 
 
+
 @dataclass
 class AttackModelConfig:
     id: str
@@ -80,13 +81,25 @@ class PAIRAttack(Attack):
         dataset: torch.utils.data.Dataset,
         log_full_results: bool = False,
     ) -> AttackResult:
+
+        # Initialize models 
+        target_model = HuggingFace(model, tokenizer)
+
+        # Can share underlying model and save VRAM if attack & target model are the same
+        if self.config.attack_model.id == model.model.name_or_path:
+            attack_model, attack_tokenizer = target_model, tokenizer
+        else:
+            attack_model, attack_tokenizer = load_model_and_tokenizer(self.config.attack_model)
+            attack_model = HuggingFace(attack_model, attack_tokenizer)
+
+        target_model = TargetLM(target_model, tokenizer, self.config.target_model)
+        attack_model = AttackLM(attack_model, attack_tokenizer, self.config.attack_model)
+
         results = AttackResult([], [], [], [], [], [], [])
 
         for msg, target in dataset:
             # prepare tokens
-            output = self.attack_single_prompt(
-                model, tokenizer, msg["content"], target
-            )
+            output = self.attack_single_prompt(attack_model, target_model, msg["content"], target)
             attacks, completions, times = output.attacks, output.completions, output.times
             results.prompts.append(msg)
             results.attacks.append(attacks)
@@ -100,7 +113,13 @@ class PAIRAttack(Attack):
             
         return results
 
-    def attack_single_prompt(self, model, tokenizer, prompt, target) -> _AttackSinglePromptResult:
+    def attack_single_prompt(
+        self, 
+        attack_model: AttackLM,
+        target_model: TargetLM,
+        prompt, 
+        target
+    ) -> _AttackSinglePromptResult:
         attacks = []
         completions = []
         times = []
@@ -109,20 +128,6 @@ class PAIRAttack(Attack):
         input_toks = []
         completions_toks = []
 
-        # Initialize models 
-        # # TODO move this down to self
-        target_model = HuggingFace(model, tokenizer)
-        # Can share underlying model and save VRAM if attack & target model are the same
-        if self.config.attack_model.id == model.model.name_or_path:
-            attack_model, attack_tokenizer = target_model, tokenizer
-        else:
-            attack_model, attack_tokenizer = load_model_and_tokenizer(self.config.attack_model)
-            attack_model = HuggingFace(attack_model, attack_tokenizer)
-
-        target_model = TargetLM(target_model, tokenizer, self.config.target_model)
-        attack_model = AttackLM(
-            attack_model, attack_tokenizer, self.config.attack_model
-        )
         t0 = time.time()
         # TODO: early stopping with judge model
         # judgeLM = load_judge(args)

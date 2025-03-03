@@ -1,4 +1,5 @@
 import os
+import gc
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -77,6 +78,9 @@ def main(cfg: DictConfig) -> None:
 
             for attack_name, attack_params in attacks_to_run:
                 logging.info(f"Attack: {attack_name}\n{OmegaConf.to_yaml(attack_params)}")
+
+                gc.collect()
+                torch.cuda.empty_cache()
 
                 attack = Attack.from_name(attack_name)(attack_params)
                 results = attack.run(model, tokenizer, dataset, log_full_results=cfg.log_toks_strs)
