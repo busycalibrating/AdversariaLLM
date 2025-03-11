@@ -1,7 +1,6 @@
 """Single-file implementation of the GCG attack with dynamic adversarial prefix creation.
 """
 import gc
-import json
 import logging
 import os
 import time
@@ -13,6 +12,7 @@ import transformers
 from accelerate.utils import find_executable_batch_size
 from torch import Tensor
 from tqdm import trange
+import numpy as np
 
 from src.lm_utils import generate_ragged_batched, prepare_tokens
 
@@ -45,6 +45,7 @@ class GCGRefusalConfig:
     token_selection: str = "default"
     max_new_tokens: int = 256
     max_new_target_tokens: int = 64
+    grow_target: bool = False
 
 
 def get_disallowed_ids(tokenizer, allow_non_ascii, allow_special, device="cpu"):
@@ -146,7 +147,15 @@ class GCGRefusalAttack(Attack):
         not_allowed_ids = get_disallowed_ids(tokenizer, self.config.allow_non_ascii, self.config.allow_special, device=model.device)
         results = AttackResult([], [], [], [], [])
 
-        fwd_pre_hooks, fwd_hooks = toxify(model, tokenizer, from_cache=True)
+        # if model.name_or_path == "GraySwanAI/Llama-3-8B-Instruct-RR":
+        #     from transformers import AutoModelForCausalLM, AutoTokenizer
+        #     target_model = AutoModelForCausalLM.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct", torch_dtype=torch.bfloat16, device_map="auto")
+        #     target_tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
+        #     fwd_pre_hooks, fwd_hooks = [], []
+        # else:
+        target_model = model
+        target_tokenizer = tokenizer
+        fwd_pre_hooks, fwd_hooks = toxify(target_model, tokenizer, from_cache=True)
 
         for msg, target in dataset:
             msg: dict[str, str]
@@ -155,13 +164,14 @@ class GCGRefusalAttack(Attack):
 
             with add_hooks(module_forward_pre_hooks=fwd_pre_hooks, module_forward_hooks=fwd_hooks):
                 fluent_target = generate_ragged_batched(
-                    model,
-                    tokenizer,
-                    [torch.cat(prepare_tokens(tokenizer, msg["content"], "", placement="prompt")[:4], dim=0)],
+                    target_model,
+                    target_tokenizer,
+                    [torch.cat(prepare_tokens(target_tokenizer, msg["content"], "", placement="prompt")[:4], dim=0)],
                     max_new_tokens=self.config.max_new_target_tokens,
                 )[0]
                 print(target, "->", fluent_target)
                 target = fluent_target
+            torch.cuda.empty_cache()
 
             pre_ids, prompt_ids, attack_ids, post_ids, target_ids = prepare_tokens(
                 tokenizer,
@@ -196,6 +206,10 @@ class GCGRefusalAttack(Attack):
             self.post_embeds = post_embeds
             self.target_embeds = target_embeds
 
+            if self.config.grow_target:
+                self.target_length = 1
+            else:
+                self.target_length = target_ids.size(1)
             # Initialize the attack buffer
             buffer = self.init_buffer(model, attack_ids)
             optim_ids = buffer.get_best_ids()
@@ -207,6 +221,8 @@ class GCGRefusalAttack(Attack):
             self.stop_flag = False
             current_loss = buffer.get_lowest_loss()
             for _ in (pbar := trange(self.config.num_steps)):
+                token_selection.target_ids = self.target_ids[:, :self.target_length]
+                token_selection.target_embeds = self.target_embeds[:, :self.target_length]
                 # Compute the token gradient
                 sampled_ids, sampled_ids_pos, grad = token_selection(
                     optim_ids.squeeze(0),
@@ -246,7 +262,7 @@ class GCGRefusalAttack(Attack):
                             [
                                 embedding_layer(sampled_ids),
                                 post_embeds.repeat(new_search_width, 1, 1),
-                                target_embeds.repeat(new_search_width, 1, 1),
+                                target_embeds[:, :self.target_length].repeat(new_search_width, 1, 1),
                             ],
                             dim=1,
                         )
@@ -256,78 +272,18 @@ class GCGRefusalAttack(Attack):
                                 pre_prompt_embeds.repeat(new_search_width, 1, 1),
                                 embedding_layer(sampled_ids),
                                 post_embeds.repeat(new_search_width, 1, 1),
-                                target_embeds.repeat(new_search_width, 1, 1),
+                                target_embeds[:, :self.target_length].repeat(new_search_width, 1, 1),
                             ],
                             dim=1,
                         )
-                    loss = find_executable_batch_size(
+                    loss, acc = find_executable_batch_size(
                         self.compute_candidates_loss, batch_size
                     )(input_embeds, model)
-                    import matplotlib.pyplot as plt
-                    import numpy as np
-
-                    # Get the gradient values for the sampled positions and tokens
-                    batch_indices = torch.arange(new_search_width, device=grad.device)
-                    selected_grads = grad[sampled_ids_pos.squeeze(), sampled_ids[batch_indices, sampled_ids_pos.squeeze()]]
-
-                    # Calculate loss differences relative to current best loss
-                    loss_diffs = loss - current_loss
-
-                    # Calculate embedding distances
-                    current_token_embeds = embedding_layer(optim_ids.squeeze())[sampled_ids_pos.squeeze()]
-                    sampled_token_embeds = embedding_layer(sampled_ids[batch_indices, sampled_ids_pos.squeeze()])
-                    embed_dists = torch.norm(sampled_token_embeds - current_token_embeds, dim=1)
-
-                    # Convert to numpy for plotting
-                    grads_np = selected_grads.to(torch.float32).cpu().numpy()
-                    loss_diffs_np = loss_diffs.to(torch.float32).cpu().numpy()
-                    dists_np = embed_dists.to(torch.float32).cpu().numpy()
-                    positions_np = sampled_ids_pos.squeeze().cpu().numpy()
-
-                    # Normalize values to [0,1] for HSV color mapping
-                    dists_norm = (dists_np - dists_np.min()) / (dists_np.max() - dists_np.min())
-                    pos_norm = positions_np / positions_np.max()
-
-                    # Create HSV colors combining distance and position
-                    colors = np.zeros((len(dists_norm), 3))
-                    colors[:, 0] = pos_norm  # Hue from position
-                    colors[:, 1] = 0.8  # Fixed saturation
-                    colors[:, 2] = 1 - dists_norm  # Value from embedding distance
-
-                    # Convert HSV to RGB
-                    colors = plt.cm.hsv(colors[:, 0])
-
-                    # Create scatter plot
-                    plt.figure(figsize=(8, 6))
-                    plt.scatter(grads_np, loss_diffs_np, c=colors, alpha=0.5)
-
-                    # Add two colorbars
-                    from mpl_toolkits.axes_grid1 import make_axes_locatable
-                    ax = plt.gca()
-                    divider = make_axes_locatable(ax)
-                    cax1 = divider.append_axes("right", size="5%", pad=0.05)
-                    cax2 = divider.append_axes("right", size="5%", pad=0.15)
-
-                    # Create colorbars
-                    sm1 = plt.cm.ScalarMappable(cmap='hsv')
-                    sm1.set_array([])
-                    plt.colorbar(sm1, cax=cax1, label='Sequence Position')
-
-                    sm2 = plt.cm.ScalarMappable(cmap='viridis')
-                    sm2.set_array([])
-                    plt.colorbar(sm2, cax=cax2, label='Embedding Distance')
-
-                    plt.xlabel('Token Gradient')
-                    plt.ylabel('Loss Difference')
-                    plt.title('Loss Difference vs Token Gradient\nColored by Position and Distance')
-
-                    # Save plot
-                    plt.savefig(f'gcg_loss_grad_step_{_}.png')
-                    plt.close()
 
                     current_loss = loss.min().item()
                     optim_ids = sampled_ids[loss.argmin()].unsqueeze(0)
-
+                    if self.config.grow_target and acc[loss.argmin()]:
+                        self.target_length += 1
                     # Update the buffer based on the loss
                     losses.append(current_loss)
                     times.append(time.time() - t0)
@@ -337,7 +293,7 @@ class GCGRefusalAttack(Attack):
                 optim_ids = buffer.get_best_ids()
                 optim_str = tokenizer.batch_decode(optim_ids)[0]
                 optim_strings.append(optim_str)
-                pbar.set_postfix({"Loss": current_loss, "Best Attack": optim_str[:50]})
+                pbar.set_postfix({"Loss": current_loss, "# TGT Toks": self.target_length, "Best Attack": optim_str[:50]})
 
                 if self.stop_flag:
                     self.logger.info("Early stopping due to finding a perfect match.")
@@ -360,7 +316,7 @@ class GCGRefusalAttack(Attack):
                 torch.cat(prepare_tokens(
                     tokenizer,
                     prompt=msg["content"],
-                    target="ZZZZZ",  # need dummy target (probably)
+                    target="",  # need dummy target (probably)
                     attack=attack,
                 )[:4])
                 for attack in attacks
@@ -392,7 +348,7 @@ class GCGRefusalAttack(Attack):
                 [
                     model.get_input_embeddings()(init_buffer_ids),
                     self.post_embeds.repeat(true_buffer_size, 1, 1),
-                    self.target_embeds.repeat(true_buffer_size, 1, 1),
+                    self.target_embeds[:, :self.target_length].repeat(true_buffer_size, 1, 1),
                 ],
                 dim=1,
             )
@@ -402,12 +358,12 @@ class GCGRefusalAttack(Attack):
                     self.pre_prompt_embeds.repeat(true_buffer_size, 1, 1),
                     model.get_input_embeddings()(init_buffer_ids),
                     self.post_embeds.repeat(true_buffer_size, 1, 1),
-                    self.target_embeds.repeat(true_buffer_size, 1, 1),
+                    self.target_embeds[:, :self.target_length].repeat(true_buffer_size, 1, 1),
                 ],
                 dim=1,
             )
 
-        init_buffer_losses = find_executable_batch_size(
+        init_buffer_losses, init_buffer_accs = find_executable_batch_size(
             self.compute_candidates_loss, true_buffer_size
         )(init_buffer_embeds, model)
 
@@ -431,6 +387,7 @@ class GCGRefusalAttack(Attack):
                 the embeddings of the `search_width` candidate sequences to evaluate
         """
         all_loss = []
+        all_acc = []
         prefix_cache_batch = []
 
         for i in range(0, input_embeds.shape[0], search_batch_size):
@@ -461,9 +418,9 @@ class GCGRefusalAttack(Attack):
 
                 logits = outputs.logits
 
-                tmp = input_embeds.shape[1] - self.target_ids.shape[1]
+                tmp = input_embeds.shape[1] - self.target_ids[:, :self.target_length].shape[1]
                 shift_logits = logits[..., tmp - 1 : -1, :].contiguous()
-                shift_labels = self.target_ids.repeat(current_batch_size, 1)
+                shift_labels = self.target_ids[:, :self.target_length].repeat(current_batch_size, 1)
 
                 if self.config.use_mellowmax:
                     label_logits = torch.gather(
@@ -478,19 +435,20 @@ class GCGRefusalAttack(Attack):
                         shift_labels.view(-1),
                         reduction="none",
                     )
-
+                acc = (shift_logits.argmax(-1) == shift_labels).all(-1)
                 loss = loss.view(current_batch_size, -1).mean(dim=-1)
                 all_loss.append(loss)
+                all_acc.append(acc)
 
                 if self.config.early_stop:
-                    if (shift_logits.argmax(-1) == shift_labels).all(-1).any().item():
+                    if acc.any().item():
                         self.stop_flag = True
 
                 del outputs
                 gc.collect()
                 torch.cuda.empty_cache()
 
-        return torch.cat(all_loss, dim=0)
+        return torch.cat(all_loss, dim=0), torch.cat(all_acc, dim=0)
 
 
 class AttackBuffer:
@@ -543,6 +501,17 @@ class SubstitutionSelectionStrategy:
     ):
         if self.strategy == "default":
             return self._sample_ids_from_grad(
+                ids,
+                model,
+                search_width,
+                topk,
+                n_replace,
+                not_allowed_ids,
+                *args,
+                **kwargs,
+            )
+        elif self.strategy == "uniform":
+            return self._sample_ids_from_grad_uniform(
                 ids,
                 model,
                 search_width,
@@ -632,7 +601,107 @@ class SubstitutionSelectionStrategy:
 
         return new_ids, sampled_ids_pos, grad
 
-    @torch.no_grad()
+    def _sample_ids_from_grad_uniform(
+        self,
+        ids: Tensor,
+        model: transformers.PreTrainedModel,
+        search_width: int,
+        topk: int = 256,
+        n_replace: int = 1,
+        not_allowed_ids: Tensor | None = None,
+    ):
+        """Returns `search_width` combinations of token ids based on the token gradient.
+        Original GCG does this.
+
+        Args:
+            ids : Tensor, shape = (n_optim_ids)
+                the sequence of token ids that are being optimized
+            grad : Tensor, shape = (n_optim_ids, vocab_size)
+                the gradient of the GCG loss computed with respect to the one-hot token embeddings
+            search_width : int
+                the number of candidate sequences to return
+            topk : int
+                the topk to be used when sampling from the gradient
+            n_replace: int
+                the number of token positions to update per sequence
+            not_allowed_ids: Tensor, shape = (n_ids)
+                the token ids that should not be used in optimization
+
+        Returns:
+            sampled_ids : Tensor, shape = (search_width, n_optim_ids)
+                sampled token ids
+            sampled_ids_pos : Tensor, shape = (search_width, n_replace)
+                positions of the sampled tokens
+            grad : Tensor, shape = (n_optim_ids, vocab_size)
+                the gradient of the GCG loss
+        """
+        grad = self.compute_token_gradient(ids.unsqueeze(0), model).squeeze(0)  # (n_optim_ids, vocab_size)
+        n_optim_tokens = len(ids)
+        original_ids = ids.repeat(search_width, 1)
+
+        # Sample proportional to -grad (lower gradient values are better)
+        # First, get the negative of grad and shift to make all values positive
+        histogram = torch.histc(grad.float(), bins=100, min=grad.min(), max=grad.max())
+        histogram = histogram / histogram.sum()
+        buckets = torch.linspace(grad.min(), grad.max(), histogram.shape[0]+1, device=grad.device)
+        # Find which bucket each element in grad belongs to
+        # We need to find the index of the first bucket that's greater than each element
+        expanded_grad = grad.view(-1, 1)  # Reshape to (n_optim_ids * vocab_size, 1)
+        expanded_buckets = buckets.view(1, -1)  # Reshape to (1, 101)
+
+        # Create a mask where True indicates the bucket is greater than the grad value
+        mask = expanded_grad < expanded_buckets
+
+        # Get the index of the first True in each row (first bucket greater than the value)
+        bucket_indices = mask.long().argmax(dim=1)
+
+        # Handle edge case where a value equals the maximum (would result in all False)
+        edge_mask = ~mask.any(dim=1)
+        bucket_indices[edge_mask] = histogram.shape[0]  # Assign to the last bucket
+
+        # Reshape back to original grad shape
+        bucket_indices = bucket_indices.view_as(grad)
+
+        # Get the frequency of each bucket (subtract 1 because indices are 1-based from argmax)
+        bucket_indices = torch.clamp(bucket_indices - 1, min=0)  # Ensure valid indices
+        bucket_freqs = histogram[bucket_indices]
+
+        # Replace grad values with inverse frequencies (add small epsilon to avoid division by zero)
+        inverse_freqs = 1.0 / (bucket_freqs + 1e-10)
+        weights = inverse_freqs
+
+        # Handle not_allowed_ids if provided
+        if not_allowed_ids is not None:
+            weights[:, not_allowed_ids.to(grad.device)] = 0
+
+        # Get topk indices based on weights (higher weights = better)
+        topk_ids = torch.zeros((n_optim_tokens, topk), dtype=torch.long, device=grad.device)
+        for i in range(n_optim_tokens):
+            # Sample without replacement proportional to weights
+            # Check if there are enough non-zero weights for sampling
+            non_zero_weights = (weights[i] > 0).sum().item()
+            if non_zero_weights < topk:
+                # If not enough valid tokens, sample with replacement
+                topk_ids[i] = torch.multinomial(weights[i], topk, replacement=True)
+            else:
+                topk_ids[i] = torch.multinomial(weights[i], topk, replacement=False)
+
+        sampled_ids_pos = torch.randint(
+            0, n_optim_tokens, (search_width, n_replace), device=grad.device
+        )  # (search_width, n_replace)
+        sampled_topk_idx = torch.randint(
+            0, topk, (search_width, n_replace, 1), device=grad.device
+        )
+
+        sampled_ids_val = (
+            topk_ids[sampled_ids_pos].gather(2, sampled_topk_idx).squeeze(2)
+        )  # (search_width, n_replace)
+
+        new_ids = original_ids.scatter_(
+            1, sampled_ids_pos, sampled_ids_val
+        )  # (search_width, n_optim_ids)
+        return new_ids, sampled_ids_pos, grad
+
     def _random_overall(
         self,
         ids: Tensor,
@@ -665,6 +734,8 @@ class SubstitutionSelectionStrategy:
         vocab_size = model.get_input_embeddings().weight.size(0)
         n_optim_tokens = ids.shape[0]
         original_ids = ids.repeat(search_width, 1)
+        # grad = torch.randn(n_optim_tokens, vocab_size, device=ids.device)
+        grad = self.compute_token_gradient(ids.unsqueeze(0), model).squeeze(0)
 
         # Create valid token mask
         valid_tokens = torch.ones(vocab_size, dtype=torch.bool, device=ids.device)
@@ -674,12 +745,13 @@ class SubstitutionSelectionStrategy:
         # Sample positions and token indices
         sampled_ids_pos = torch.randint(0, n_optim_tokens, (search_width, 1), device=ids.device)
         valid_token_indices = torch.nonzero(valid_tokens).squeeze()
-        sampled_topk_idx = valid_token_indices[torch.randint(0, valid_token_indices.size(0), (search_width, 1), device=ids.device)]
+        topk_idx = torch.randint(0, valid_token_indices.size(0), (search_width, 1), device=ids.device)
+        sampled_topk_idx = valid_token_indices[topk_idx]
 
         # Create new sequences with substitutions
         new_ids = original_ids.scatter_(1, sampled_ids_pos, sampled_topk_idx)
 
-        return new_ids, sampled_ids_pos
+        return new_ids, sampled_ids_pos, grad
 
     @torch.no_grad()
     def _random_per_position(
@@ -878,6 +950,10 @@ class SubstitutionSelectionStrategy:
         return optim_ids_onehot_grad
 
 
+# -------------------------------------------------------------------------------------#
+# Code below is to get the refusal direction for a particular model                    #
+# Not directly relevant to the optimization itself.                                    #
+# -------------------------------------------------------------------------------------#
 from src.dataset import RefusalDirectionDataDataset, RefusalDirectionDataConfig
 from tqdm import tqdm
 from functools import partial
@@ -986,6 +1062,7 @@ def get_activation_addition_input_pre_hook(vector: Tensor, coeff: Tensor):
             return activation
     return hook_fn
 
+
 def refusal_score(
     logits: Tensor,
     refusal_toks: Tensor,
@@ -1001,6 +1078,7 @@ def refusal_score(
 
     nonrefusal_probs = torch.ones_like(refusal_probs) - refusal_probs
     return torch.log(refusal_probs + epsilon) - torch.log(nonrefusal_probs + epsilon)
+
 
 def get_refusal_scores(model, tokenizer, instructions, refusal_toks, fwd_pre_hooks=[], fwd_hooks=[], batch_size=32):
     refusal_score_fn = partial(refusal_score, refusal_toks=refusal_toks)
@@ -1024,6 +1102,7 @@ def get_refusal_scores(model, tokenizer, instructions, refusal_toks, fwd_pre_hoo
 
     return refusal_scores
 
+
 def kl_div_fn(
     logits_a: Tensor,
     logits_b: Tensor,
@@ -1045,6 +1124,7 @@ def kl_div_fn(
         return torch.mean(kl_divs, dim=-1)
     else:
         return masked_mean(kl_divs, mask).mean(dim=-1)
+
 
 def masked_mean(seq, mask=None, dim=1, keepdim=False):
     if mask is None:
@@ -1096,6 +1176,7 @@ def get_attn_modules(model):
     if not attn:
         raise ValueError("No attention modules found in model")
     return attn
+
 
 def get_mlp_modules(model):
     blocks = get_blocks(model)
@@ -1192,20 +1273,8 @@ def select_direction(
             steering_refusal_scores[source_pos, source_layer] = refusal_scores.mean().item()
 
     filtered_scores = []
-    json_output_all_scores = []
-    json_output_filtered_scores = []
-
     for source_pos in range(-n_pos, 0):
         for source_layer in range(n_layer):
-
-            json_output_all_scores.append({
-                'position': source_pos,
-                'layer': source_layer,
-                'refusal_score': ablation_refusal_scores[source_pos, source_layer].item(),
-                'steering_score': steering_refusal_scores[source_pos, source_layer].item(),
-                'kl_div_score': ablation_kl_div_scores[source_pos, source_layer].item()
-            })
-
             refusal_score = ablation_refusal_scores[source_pos, source_layer].item()
             steering_score = steering_refusal_scores[source_pos, source_layer].item()
             kl_div_score = ablation_kl_div_scores[source_pos, source_layer].item()
@@ -1215,7 +1284,7 @@ def select_direction(
             sorting_score = -refusal_score
 
             # we filter out directions if the KL threshold
-            discard_direction = filter_fn(
+            if filter_fn(
                 refusal_score=refusal_score,
                 steering_score=steering_score,
                 kl_div_score=kl_div_score,
@@ -1224,20 +1293,9 @@ def select_direction(
                 kl_threshold=kl_threshold,
                 induce_refusal_threshold=induce_refusal_threshold,
                 prune_layer_percentage=prune_layer_percentage
-            )
-
-            if discard_direction:
+            ):
                 continue
-
             filtered_scores.append((sorting_score, source_pos, source_layer))
-
-            json_output_filtered_scores.append({
-                'position': source_pos,
-                'layer': source_layer,
-                'refusal_score': ablation_refusal_scores[source_pos, source_layer].item(),
-                'steering_score': steering_refusal_scores[source_pos, source_layer].item(),
-                'kl_div_score': ablation_kl_div_scores[source_pos, source_layer].item()
-            })
 
     # sorted in descending order
     filtered_scores = sorted(filtered_scores, key=lambda x: x[0], reverse=True)
@@ -1251,6 +1309,7 @@ def select_direction(
     print(f"KL Divergence: {ablation_kl_div_scores[pos, layer]:.4f}")
 
     return pos, layer, candidate_directions[pos, layer]
+
 
 def filter_data(model, tokenizer, harmful, harmless):
     """
@@ -1289,7 +1348,7 @@ def toxify(model, tokenizer, batch_size=16, from_cache=True):
         path=f"{data_root}/refusal_direction",
         split="train",
         type="harmless",
-        n_samples=256,
+        n_samples=512,
     )
     harmless_data = RefusalDirectionDataDataset(harmless_cfg)
     harmful_cfg = RefusalDirectionDataConfig(
@@ -1297,7 +1356,7 @@ def toxify(model, tokenizer, batch_size=16, from_cache=True):
         path=f"{data_root}/refusal_direction",
         split="train",
         type="harmful",
-        n_samples=256,
+        n_samples=512,
     )
     harmful_data = RefusalDirectionDataDataset(harmful_cfg)
     filter_data(model, tokenizer, harmful_data, harmless_data)
@@ -1333,7 +1392,7 @@ def toxify(model, tokenizer, batch_size=16, from_cache=True):
         path=f"{data_root}/refusal_direction",
         split="val",
         type="harmful",
-        n_samples=128,
+        n_samples=256,
     )
     harmful_val = RefusalDirectionDataDataset(harmful_val_cfg)
     harmless_val_cfg = RefusalDirectionDataConfig(
@@ -1341,7 +1400,7 @@ def toxify(model, tokenizer, batch_size=16, from_cache=True):
         path=f"{data_root}/refusal_direction",
         split="val",
         type="harmless",
-        n_samples=128,
+        n_samples=256,
     )
     harmless_val = RefusalDirectionDataDataset(harmless_val_cfg)
     filter_data(model, tokenizer, harmful_val, harmless_val)
@@ -1359,3 +1418,10 @@ def toxify(model, tokenizer, batch_size=16, from_cache=True):
     fwd_hooks += [(mlp, get_direction_ablation_output_hook(direction=ablation_dir)) for mlp in mlp_modules]
     # fmt: on
     return fwd_pre_hooks, fwd_hooks
+
+
+if __name__ == "__main__":
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    model = AutoModelForCausalLM.from_pretrained("GraySwanAI/Llama-3-8B-Instruct-RR", torch_dtype=torch.bfloat16, device_map="auto")
+    tokenizer = AutoTokenizer.from_pretrained("GraySwanAI/Llama-3-8B-Instruct-RR")
+    toxify(model, tokenizer, batch_size=16, from_cache=False)

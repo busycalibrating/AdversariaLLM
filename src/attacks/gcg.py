@@ -58,6 +58,7 @@ class GCGConfig:
     verbosity: str = "WARNING"
     token_selection: str = "default"
     max_new_tokens: int = 256
+    grow_target: bool = False
 
 
 def get_disallowed_ids(tokenizer, allow_non_ascii, allow_special, device="cpu"):
@@ -196,6 +197,10 @@ class GCGAttack(Attack):
             self.post_embeds = post_embeds
             self.target_embeds = target_embeds
 
+            if self.config.grow_target:
+                self.target_length = 1
+            else:
+                self.target_length = target_ids.size(1)
             # Initialize the attack buffer
             buffer = self.init_buffer(model, attack_ids)
             optim_ids = buffer.get_best_ids()
@@ -207,6 +212,8 @@ class GCGAttack(Attack):
             self.stop_flag = False
             current_loss = buffer.get_lowest_loss()
             for _ in (pbar := trange(self.config.num_steps)):
+                token_selection.target_ids = self.target_ids[:, :self.target_length]
+                token_selection.target_embeds = self.target_embeds[:, :self.target_length]
                 # Compute the token gradient
                 sampled_ids, sampled_ids_pos, grad = token_selection(
                     optim_ids.squeeze(0),
@@ -234,7 +241,6 @@ class GCGAttack(Attack):
                         sampled_ids_pos = sampled_ids_pos[idx]
 
                     new_search_width = sampled_ids.shape[0]
-
                     # Compute loss on all candidate sequences
                     batch_size = (
                         new_search_width
@@ -246,7 +252,7 @@ class GCGAttack(Attack):
                             [
                                 embedding_layer(sampled_ids),
                                 post_embeds.repeat(new_search_width, 1, 1),
-                                target_embeds.repeat(new_search_width, 1, 1),
+                                target_embeds[:, :self.target_length].repeat(new_search_width, 1, 1),
                             ],
                             dim=1,
                         )
@@ -256,78 +262,18 @@ class GCGAttack(Attack):
                                 pre_prompt_embeds.repeat(new_search_width, 1, 1),
                                 embedding_layer(sampled_ids),
                                 post_embeds.repeat(new_search_width, 1, 1),
-                                target_embeds.repeat(new_search_width, 1, 1),
+                                target_embeds[:, :self.target_length].repeat(new_search_width, 1, 1),
                             ],
                             dim=1,
                         )
-                    loss = find_executable_batch_size(
+                    loss, acc = find_executable_batch_size(
                         self.compute_candidates_loss, batch_size
                     )(input_embeds, model)
-                    # import matplotlib.pyplot as plt
-                    # import numpy as np
-
-                    # # Get the gradient values for the sampled positions and tokens
-                    # batch_indices = torch.arange(new_search_width, device=grad.device)
-                    # selected_grads = grad[sampled_ids_pos.squeeze(), sampled_ids[batch_indices, sampled_ids_pos.squeeze()]]
-
-                    # # Calculate loss differences relative to current best loss
-                    # loss_diffs = loss - current_loss
-
-                    # # Calculate embedding distances
-                    # current_token_embeds = embedding_layer(optim_ids.squeeze())[sampled_ids_pos.squeeze()]
-                    # sampled_token_embeds = embedding_layer(sampled_ids[batch_indices, sampled_ids_pos.squeeze()])
-                    # embed_dists = torch.norm(sampled_token_embeds - current_token_embeds, dim=1)
-
-                    # # Convert to numpy for plotting
-                    # grads_np = selected_grads.to(torch.float32).cpu().numpy()
-                    # loss_diffs_np = loss_diffs.to(torch.float32).cpu().numpy()
-                    # dists_np = embed_dists.to(torch.float32).cpu().numpy()
-                    # positions_np = sampled_ids_pos.squeeze().cpu().numpy()
-
-                    # # Normalize values to [0,1] for HSV color mapping
-                    # dists_norm = (dists_np - dists_np.min()) / (dists_np.max() - dists_np.min())
-                    # pos_norm = positions_np / positions_np.max()
-
-                    # # Create HSV colors combining distance and position
-                    # colors = np.zeros((len(dists_norm), 3))
-                    # colors[:, 0] = pos_norm  # Hue from position
-                    # colors[:, 1] = 0.8  # Fixed saturation
-                    # colors[:, 2] = 1 - dists_norm  # Value from embedding distance
-
-                    # # Convert HSV to RGB
-                    # colors = plt.cm.hsv(colors[:, 0])
-
-                    # # Create scatter plot
-                    # plt.figure(figsize=(8, 6))
-                    # plt.scatter(grads_np, loss_diffs_np, c=colors, alpha=0.5)
-
-                    # # Add two colorbars
-                    # from mpl_toolkits.axes_grid1 import make_axes_locatable
-                    # ax = plt.gca()
-                    # divider = make_axes_locatable(ax)
-                    # cax1 = divider.append_axes("right", size="5%", pad=0.05)
-                    # cax2 = divider.append_axes("right", size="5%", pad=0.15)
-
-                    # # Create colorbars
-                    # sm1 = plt.cm.ScalarMappable(cmap='hsv')
-                    # sm1.set_array([])
-                    # plt.colorbar(sm1, cax=cax1, label='Sequence Position')
-
-                    # sm2 = plt.cm.ScalarMappable(cmap='viridis')
-                    # sm2.set_array([])
-                    # plt.colorbar(sm2, cax=cax2, label='Embedding Distance')
-
-                    # plt.xlabel('Token Gradient')
-                    # plt.ylabel('Loss Difference')
-                    # plt.title('Loss Difference vs Token Gradient\nColored by Position and Distance')
-
-                    # # Save plot
-                    # plt.savefig(f'gcg_loss_grad_step_{_}.png')
-                    # plt.close()
 
                     current_loss = loss.min().item()
                     optim_ids = sampled_ids[loss.argmin()].unsqueeze(0)
-
+                    if self.config.grow_target and acc[loss.argmin()]:
+                        self.target_length += 1
                     # Update the buffer based on the loss
                     losses.append(current_loss)
                     times.append(time.time() - t0)
@@ -337,7 +283,7 @@ class GCGAttack(Attack):
                 optim_ids = buffer.get_best_ids()
                 optim_str = tokenizer.batch_decode(optim_ids)[0]
                 optim_strings.append(optim_str)
-                pbar.set_postfix({"Loss": current_loss, "Best Attack": optim_str[:50]})
+                pbar.set_postfix({"Loss": current_loss, "# TGT Toks": self.target_length, "Best Attack": optim_str[:50]})
 
                 if self.stop_flag:
                     self.logger.info("Early stopping due to finding a perfect match.")
@@ -392,7 +338,7 @@ class GCGAttack(Attack):
                 [
                     model.get_input_embeddings()(init_buffer_ids),
                     self.post_embeds.repeat(true_buffer_size, 1, 1),
-                    self.target_embeds.repeat(true_buffer_size, 1, 1),
+                    self.target_embeds[:, :self.target_length].repeat(true_buffer_size, 1, 1),
                 ],
                 dim=1,
             )
@@ -402,12 +348,12 @@ class GCGAttack(Attack):
                     self.pre_prompt_embeds.repeat(true_buffer_size, 1, 1),
                     model.get_input_embeddings()(init_buffer_ids),
                     self.post_embeds.repeat(true_buffer_size, 1, 1),
-                    self.target_embeds.repeat(true_buffer_size, 1, 1),
+                    self.target_embeds[:, :self.target_length].repeat(true_buffer_size, 1, 1),
                 ],
                 dim=1,
             )
 
-        init_buffer_losses = find_executable_batch_size(
+        init_buffer_losses, init_buffer_accs = find_executable_batch_size(
             self.compute_candidates_loss, true_buffer_size
         )(init_buffer_embeds, model)
 
@@ -431,6 +377,7 @@ class GCGAttack(Attack):
                 the embeddings of the `search_width` candidate sequences to evaluate
         """
         all_loss = []
+        all_acc = []
         prefix_cache_batch = []
 
         for i in range(0, input_embeds.shape[0], search_batch_size):
@@ -461,9 +408,9 @@ class GCGAttack(Attack):
 
                 logits = outputs.logits
 
-                tmp = input_embeds.shape[1] - self.target_ids.shape[1]
+                tmp = input_embeds.shape[1] - self.target_ids[:, :self.target_length].shape[1]
                 shift_logits = logits[..., tmp - 1 : -1, :].contiguous()
-                shift_labels = self.target_ids.repeat(current_batch_size, 1)
+                shift_labels = self.target_ids[:, :self.target_length].repeat(current_batch_size, 1)
 
                 if self.config.use_mellowmax:
                     label_logits = torch.gather(
@@ -478,19 +425,20 @@ class GCGAttack(Attack):
                         shift_labels.view(-1),
                         reduction="none",
                     )
-
+                acc = (shift_logits.argmax(-1) == shift_labels).all(-1)  # (B, T) -> (B,)
                 loss = loss.view(current_batch_size, -1).mean(dim=-1)
                 all_loss.append(loss)
+                all_acc.append(acc)
 
                 if self.config.early_stop:
-                    if (shift_logits.argmax(-1) == shift_labels).all(-1).any().item():
+                    if acc.any().item():
                         self.stop_flag = True
 
                 del outputs
                 gc.collect()
                 torch.cuda.empty_cache()
 
-        return torch.cat(all_loss, dim=0)
+        return torch.cat(all_loss, dim=0), torch.cat(all_acc, dim=0)
 
 
 class AttackBuffer:
@@ -680,7 +628,8 @@ class SubstitutionSelectionStrategy:
         # Create new sequences with substitutions
         new_ids = original_ids.scatter_(1, sampled_ids_pos, sampled_topk_idx)
 
-        return new_ids, sampled_ids_pos
+        grad = None
+        return new_ids, sampled_ids_pos, grad
 
     @torch.no_grad()
     def _random_per_position(

@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from accelerate.utils import find_executable_batch_size
 from torch.nn.utils.rnn import pad_sequence
 from tqdm import trange
+from transformers import AutoModelForCausalLM
 
 from src.lm_utils import prepare_tokens, generate_ragged_batched
 
@@ -32,6 +33,9 @@ class PGDConfig:
     embedding_scale: Optional[float] = None
     normalize_alpha: bool = False
     normalize_gradient: bool = False
+    original_model: Optional[str] = None
+    tie_embeddings: float = 0.0
+    tie_features: float = 0.0
 
 
 class PGDAttack(Attack):
@@ -59,6 +63,12 @@ class PGDAttack(Attack):
                 self.config.embedding_scale = (
                     model.get_input_embeddings().weight.norm(dim=-1, p=1).mean().item()
                 )
+        if self.config.original_model is None:
+            original_model = None
+        else:
+            original_model = AutoModelForCausalLM.from_pretrained(self.config.original_model, torch_dtype=torch.bfloat16, low_cpu_mem_usage=True, device_map="auto").eval()
+
+
         for msg, target in dataset:
             pre_tokens, prompt_tokens, attack_tokens, post_tokens, target_tokens = (
                 prepare_tokens(
@@ -113,6 +123,7 @@ class PGDAttack(Attack):
             attack_masks,
             target_masks,
             model,
+            original_model,
             tokenizer,
         )
         # assemble the results
@@ -133,13 +144,14 @@ class PGDAttack(Attack):
         attack_masks,
         target_masks,
         model,
+        original_model,
         tokenizer,
     ):
         num_examples = x.size(0)
         losses = [[] for _ in range(num_examples)]
         completions = [[] for _ in range(num_examples)]
         perturbed_embeddings_list = [[] for _ in range(num_examples)]
-        times = []
+        times = [[] for _ in range(num_examples)]
         # Perform the actual attack
         logging.info(f"Attacking {num_examples} examples in batches of {batch_size}")
         t0 = time.time()
@@ -157,11 +169,14 @@ class PGDAttack(Attack):
             perturbed_embeddings = original_embeddings.detach().clone()
             for _ in (pbar := trange(self.config.num_steps)):
                 perturbed_embeddings.requires_grad = True
-                model.zero_grad()
-                logits = model(
+                # Extract features from both models
+                outputs = model(
                     inputs_embeds=perturbed_embeddings,
                     attention_mask=attention_mask_batch,
-                ).logits
+                    output_hidden_states=True
+                )
+                logits = outputs.logits
+                features = outputs.hidden_states
                 loss = F.cross_entropy(
                     logits.view(-1, logits.size(-1)),
                     y_batch.view(-1),
@@ -170,7 +185,29 @@ class PGDAttack(Attack):
                 loss = loss.view(perturbed_embeddings.size(0), -1)
                 loss = loss * target_masks_batch  # (B, L)
                 loss = loss.mean(dim=1)  # (B,)
-                loss.sum().backward()
+
+                if self.config.original_model is not None:
+                    original_outputs = original_model(
+                        inputs_embeds=perturbed_embeddings,
+                        attention_mask=attention_mask_batch,
+                        output_hidden_states=True
+                    )
+                    original_logits = original_outputs.logits
+                    original_features = original_outputs.hidden_states
+
+                    # Add KL divergence penalty for both logits and intermediate features
+                    kl_div_loss = F.kl_div(
+                        F.log_softmax(logits, dim=-1),
+                        F.softmax(original_logits, dim=-1),
+                        reduction="batchmean"
+                    ) * self.config.tie_embeddings
+                    # Calculate cosine similarity for each layer's features
+                    for perturbed_layer, original_layer in zip(features, original_features):
+                        kl_div_loss += (1 - F.cosine_similarity(perturbed_layer, original_layer, dim=-1).mean()) * self.config.tie_features
+                else:
+                    kl_div_loss = 0.0
+                total_loss = loss + kl_div_loss
+                total_loss.sum().backward()
                 for j, l in enumerate(loss.detach().tolist()):
                     losses[i + j].append(l)
 
@@ -190,7 +227,9 @@ class PGDAttack(Attack):
                     else:
                         raise ValueError(f"Unknown projection {self.config.projection}")
                     perturbed_embeddings = (original_embeddings + delta).detach()
-                times.append(time.time() - t0)
+                t = time.time() - t0
+                for j in range(x_batch.size(0)):
+                    times[i + j].append(t)
                 pbar.set_postfix({"loss": loss.mean().item()})
                 if self.config.generate_completions == "all":
                     for j, (pe, tm) in enumerate(zip(perturbed_embeddings, target_masks_batch)):

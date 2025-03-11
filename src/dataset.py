@@ -161,6 +161,7 @@ class JBBBehaviorsDataset(Dataset):
 class StrongRejectConfig:
     name: str
     categories: list[str]
+    path: str
     split: str = "train"
     seed: int = 0
     version: Literal["small", "full"] = "small"
@@ -177,7 +178,11 @@ class StrongRejectDataset(Dataset):
             url += "strongreject_dataset.csv"
 
         self.dataset = load_dataset("csv", data_files=url)[config.split]
+        self.targets = open(os.path.join(config.path, "targets.txt"), "r").readlines()
+        assert len(self.dataset) == len(self.targets), "Mismatched lengths"
 
+        # Add targets as a column to the dataset
+        self.dataset = self.dataset.add_column("target", self.targets)
         # Ignore copyright-related rows
         self.messages = self.dataset[
             self.dataset["category"].isin(config.categories)
@@ -201,7 +206,7 @@ class StrongRejectDataset(Dataset):
         msg = self.messages.iloc[idx]
         message = {"role": "user", "content": msg["forbidden_prompt"]}
 
-        target: str = ""
+        target: str = msg["target"]
         return message, target
 
 

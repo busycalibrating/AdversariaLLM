@@ -94,6 +94,55 @@ gcg:
   verbosity: WARNING
   token_selection: default
   max_new_tokens: 256
+  grow_target: False
+gcg_refusal:
+  name: gcg_refusal
+  type: discrete
+  placement: suffix
+  generate_completions: all
+  num_steps: 250
+  seed: 0
+  batch_size: 512
+  optim_str_init: "x x x x x x x x x x x x x x x x x x x x" # all tested tokenizers convert this to exactly 20 tokens
+  search_width: 512
+  topk: 256
+  n_replace: 1
+  buffer_size: 0
+  use_mellowmax: False
+  use_constrained_gradient: False
+  mellowmax_alpha: 1.0
+  early_stop: False
+  use_prefix_cache: True
+  allow_non_ascii: False
+  allow_special: False
+  filter_ids: True
+  verbosity: WARNING
+  token_selection: default
+  max_new_tokens: 256
+  max_new_target_tokens: 64
+  grow_target: False
+gcg_judge:
+  name: gcg_judge
+  type: discrete
+  placement: suffix
+  generate_completions: all
+  num_steps: 250
+  seed: 0
+  batch_size: 512
+  optim_str_init: "x x x x x x x x x x x x x x x x x x x x" # all tested tokenizers convert this to exactly 20 tokens
+  search_width: 512
+  topk: 256
+  n_replace: 1
+  buffer_size: 0
+  use_constrained_gradient: False
+  early_stop: False
+  use_prefix_cache: True
+  allow_non_ascii: False
+  allow_special: False
+  filter_ids: True
+  verbosity: WARNING
+  token_selection: default
+  max_new_tokens: 256
 human_jailbreaks:
   name: human_jailbreaks
   type: discrete

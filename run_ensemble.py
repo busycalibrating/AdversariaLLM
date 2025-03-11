@@ -18,6 +18,7 @@ attacks_a100 = [
     "human_jailbreaks",
     "beast",
     "direct",
+    "prefilling",
 ]
 attacks_h100 = [
     "ample_gcg",
@@ -39,8 +40,8 @@ template_h100 = (
 template_pgd = (
     "python run_attacks.py ++model_name={model_name} ++attack_name=pgd "
     '++datasets.adv_behaviors.idx="{indices}" ++dataset_name=adv_behaviors '
-    "++hydra.launcher.timeout_min=300 "
-    "++attacks.pgd.epsilon=1 ++attacks.pgd.normalize_alpha=true "
+    "++hydra.launcher.timeout_min=300 ++hydra.launcher.qos=deadline "
+    "++attacks.pgd.epsilon=0.5 ++attacks.pgd.normalize_alpha=true ++attacks.pgd.normalize_gradient=true ++attacks.pgd.alpha=0.01 "
     "-m "
 )
 
