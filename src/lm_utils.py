@@ -525,11 +525,7 @@ def prepare_tokens(
             f"Unable to find consistent tokenizer patterns for {tokenizer.name_or_path}"
         )
 
-    chat_no_attack = [
-        {"role": "user", "content": prompt},
-        {"role": "assistant", "content": target},
-    ]
-    tokenized_together_no_attack = tokenize_chats([chat_no_attack], tokenizer)[0]
+    tokenized_together_no_attack = get_tokenized_no_attack(prompt, target, tokenizer)
 
     attack_length = len(tokenized_together) - len(tokenized_together_no_attack)
 
@@ -644,7 +640,18 @@ def tokenize_chats(chats: list[list[dict[str, str]]], tokenizer) -> list[torch.T
     ]
 
 
-# Generate random messages to find tokenizer patterns, this is ugly but fast
+@lru_cache()
+def get_tokenized_no_attack(prompt, target, tokenizer):
+    # Cache the tokenization of the chat without attack, cause it changes rarely for
+    # most attacks.
+    chat_no_attack = [
+        {"role": "user", "content": prompt},
+        {"role": "assistant", "content": target},
+    ]
+    return tokenize_chats([chat_no_attack], tokenizer)[0]
+
+
+s# Generate random messages to find tokenizer patterns, this is ugly but fast
 @lru_cache()
 def get_pre_post_suffix_tokens(tokenizer, num_messages):
     test_chats = _make_random_chats(num_messages)
