@@ -21,14 +21,15 @@ import logging
 import time
 from dataclasses import dataclass
 from typing import Literal
+from functools import partial
 
 import torch
 import transformers
-from accelerate.utils import find_executable_batch_size
 from torch import Tensor
 from tqdm import trange
+import matplotlib.pyplot as plt
 
-from src.lm_utils import generate_ragged_batched, prepare_tokens
+from src.lm_utils import filter_suffix, get_disallowed_ids, generate_ragged_batched, prepare_tokens, with_max_batchsize
 
 from .attack import Attack, AttackResult
 
@@ -47,7 +48,7 @@ class GCGConfig:
     topk: int = 256
     n_replace: int = 1
     buffer_size: int = 0
-    use_mellowmax: bool = False
+    loss: Literal["mellowmax", "cw", "ce"] = "ce"
     use_constrained_gradient: bool = False
     mellowmax_alpha: float = 1.0
     early_stop: bool = False
@@ -61,85 +62,64 @@ class GCGConfig:
     grow_target: bool = False
 
 
-def get_disallowed_ids(tokenizer, allow_non_ascii, allow_special, device="cpu"):
-    disallowed_ids = []
-
-    def is_ascii(s):
-        return s.isascii() and s.isprintable()
-
-    # Important to loop over len(tokenizer), not just tokenizer.vocab_size, because
-    # special tokens added post-hoc are not counted to vocab_size.
-    if not allow_non_ascii:
-        for i in range(len(tokenizer)):
-            if not is_ascii(tokenizer.decode([i])):
-                disallowed_ids.append(i)
-
-    if not allow_special:
-        for i in range(len(tokenizer)):
-            if not tokenizer.decode([i], skip_special_tokens=True):
-                disallowed_ids.append(i)
-
-    if tokenizer.bos_token_id is not None:
-        disallowed_ids.append(tokenizer.bos_token_id)
-    if tokenizer.eos_token_id is not None:
-        disallowed_ids.append(tokenizer.eos_token_id)
-    if tokenizer.pad_token_id is not None:
-        disallowed_ids.append(tokenizer.pad_token_id)
-    if tokenizer.unk_token_id is not None:
-        disallowed_ids.append(tokenizer.unk_token_id)
-    disallowed_ids = sorted(list(set(disallowed_ids)))
-    return torch.tensor(disallowed_ids, device=device)
-
-
-def mellowmax(t: Tensor, alpha=1.0, dim=-1):
-    return (
-        1.0 / alpha * (
-            torch.logsumexp(alpha * t, dim=dim)
-            - torch.log(torch.tensor(t.shape[-1], dtype=t.dtype, device=t.device))
-        )
-    )
-
-
-def filter_ids(ids: Tensor, tokenizer: transformers.PreTrainedTokenizer, prompt, target):
-    """Filters out sequences of token ids that change after retokenization.
+def compute_loss(shift_logits: Tensor, shift_labels: Tensor, loss_type: str, mellowmax_alpha: float = 1.0) -> Tensor:
+    """Computes the loss based on the specified loss type.
 
     Args:
-        ids : Tensor, shape = (search_width, n_optim_ids)
-        tokenizer : ~transformers.PreTrainedTokenizer
-        prompt : str
-        target : str
+        shift_logits: Tensor of shape (batch_size, seq_len, vocab_size)
+        shift_labels: Tensor of shape (batch_size, seq_len)
+        loss_type: Type of loss to compute ('mellowmax', 'cw', 'ce', 'entropy')
+        mellowmax_alpha: Alpha parameter for mellowmax loss
 
     Returns:
-        filtered_ids : Tensor, shape = (new_search_width, n_optim_ids)
-            all token ids that are the same after retokenization
+        loss: Tensor of shape (batch_size,)
+
+    Raises:
+        NotImplementedError: If the loss type is not implemented
     """
-    attacks_decoded = tokenizer.batch_decode(ids)
-    filtered_idx = []
+    if loss_type == "mellowmax":
+        label_logits = torch.gather(
+            shift_logits, -1, shift_labels.unsqueeze(-1)
+        ).squeeze(-1)
 
-    for i, attack in enumerate(attacks_decoded):
-        pre_ids, prompt_ids, attack_ids, post_ids, target_ids = prepare_tokens(
-            tokenizer,
-            prompt,
-            target,
-            attack=attack,
-            placement="suffix",
-        )
-        if torch.equal(ids[i], attack_ids.to(ids.device)):
-            filtered_idx.append(i)
+        def mellowmax(t: Tensor, alpha=1.0, dim=-1):
+            return (
+                1.0 / alpha * (
+                    torch.logsumexp(alpha * t, dim=dim)
+                    - torch.log(torch.tensor(t.shape[-1], dtype=t.dtype, device=t.device))
+                )
+            )
+        loss = mellowmax(-label_logits, alpha=mellowmax_alpha, dim=-1)
+    elif loss_type == "cw":
+        # Get logits for target tokens
+        target_logits = shift_logits.gather(-1, shift_labels.unsqueeze(-1)).squeeze(-1)  # (B, T)
+        tmp_logits = shift_logits.clone()
+        tmp_logits.scatter_(-1, shift_labels.unsqueeze(-1), -1e3)
+        max_other_logits = tmp_logits.max(dim=-1).values  # (B, T, D) -> (B, T)
 
-    if not filtered_idx:
-        # This occurs in some cases, e.g. using the Llama-3 tokenizer with a bad initialization
-        raise RuntimeError(
-            "No token sequences are the same after decoding and re-encoding. "
-            "Consider setting `filter_ids=False` or trying a different `optim_str_init`"
-            "An example of the token sequence that failed:"
-            f"{ids[-1]}"
-            "\n->\n"
-            f"{attacks_decoded[-1]}"
-            "\n->\n"
-            f"{attack_ids}"
+        loss = max_other_logits - target_logits  # (B, T)
+        loss = loss.clamp_min(-1e-3).mean(dim=-1)  # (B, T) -> (B,)
+    elif loss_type == "entropy":
+        # Compute entropy of predicted logits
+        log_probs = torch.nn.functional.log_softmax(shift_logits, dim=-1)
+        probs = torch.exp(log_probs)
+        entropy = -(probs * log_probs).sum(dim=-1)  # (B, T)
+        # We want to maximize entropy, so we negate it to make it a loss to minimize
+        loss = -entropy.mean(dim=-1)  # (B, T) -> (B,)
+    elif loss_type == "smallmax":
+        max_logits = shift_logits.max(dim=-1).values
+        loss = max_logits.mean(dim=-1)
+    elif loss_type == "ce":
+        loss = torch.nn.functional.cross_entropy(
+            shift_logits.view(-1, shift_logits.size(-1)),
+            shift_labels.view(-1),
+            reduction="none",
         )
-    return filtered_idx
+        loss = loss.view(shift_logits.shape[0], -1).mean(dim=-1)
+    else:
+        raise NotImplementedError(f"Loss function {loss_type} not implemented")
+
+    return loss
 
 
 class GCGAttack(Attack):
@@ -157,7 +137,7 @@ class GCGAttack(Attack):
             self.logger.setLevel(logging.INFO)
 
     def run(self, model, tokenizer, dataset) -> AttackResult:
-        not_allowed_ids = get_disallowed_ids(tokenizer, self.config.allow_non_ascii, self.config.allow_special, device=model.device)
+        not_allowed_ids = get_disallowed_ids(tokenizer, self.config.allow_non_ascii, self.config.allow_special).to(model.device)
         results = AttackResult([], [], [], [], [])
         for msg, target in dataset:
             msg: dict[str, str]
@@ -230,7 +210,7 @@ class GCGAttack(Attack):
                         # the entire prompt, not just the attack sequence in an isolated
                         # way. This is because the prompt and attack can affect each
                         # other's tokenization in some cases.
-                        idx = filter_ids(
+                        idx = filter_suffix(
                             sampled_ids,
                             tokenizer,
                             msg["content"],
@@ -240,35 +220,8 @@ class GCGAttack(Attack):
                         sampled_ids = sampled_ids[idx]
                         sampled_ids_pos = sampled_ids_pos[idx]
 
-                    new_search_width = sampled_ids.shape[0]
-                    # Compute loss on all candidate sequences
-                    batch_size = (
-                        new_search_width
-                        if self.config.batch_size is None
-                        else self.config.batch_size
-                    )
-                    if self.prefix_cache:
-                        input_embeds = torch.cat(
-                            [
-                                embedding_layer(sampled_ids),
-                                post_embeds.repeat(new_search_width, 1, 1),
-                                target_embeds[:, :self.target_length].repeat(new_search_width, 1, 1),
-                            ],
-                            dim=1,
-                        )
-                    else:
-                        input_embeds = torch.cat(
-                            [
-                                pre_prompt_embeds.repeat(new_search_width, 1, 1),
-                                embedding_layer(sampled_ids),
-                                post_embeds.repeat(new_search_width, 1, 1),
-                                target_embeds[:, :self.target_length].repeat(new_search_width, 1, 1),
-                            ],
-                            dim=1,
-                        )
-                    loss, acc = find_executable_batch_size(
-                        self.compute_candidates_loss, batch_size
-                    )(input_embeds, model)
+                    compute_loss_fn = partial(self.compute_candidates_loss, model)
+                    loss, acc = with_max_batchsize(compute_loss_fn, sampled_ids, self.config.batch_size)
 
                     current_loss = loss.min().item()
                     optim_ids = sampled_ids[loss.argmin()].unsqueeze(0)
@@ -283,8 +236,49 @@ class GCGAttack(Attack):
                 optim_ids = buffer.get_best_ids()
                 optim_str = tokenizer.batch_decode(optim_ids)[0]
                 optim_strings.append(optim_str)
-                pbar.set_postfix({"Loss": current_loss, "# TGT Toks": self.target_length, "Best Attack": optim_str[:50]})
+                pbar.set_postfix({"Loss": current_loss, "# TGT Toks": self.target_length, "Best Attack": optim_str[:80]})
 
+                # Create figure with two subplots side by side
+                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+                # Sort gradient values for the left plot
+                sorted_grad_values, sorted_indices = torch.sort(grad, dim=1, descending=True)
+
+                # Left plot: Gradient values (sorted)
+                im1 = ax1.imshow(
+                    sorted_grad_values.cpu().float().numpy(),
+                    aspect='auto',
+                    cmap='viridis',
+                    interpolation='none'
+                )
+                ax1.set_xlabel('Sorted Vocabulary Index')
+                ax1.set_ylabel('Token Position')
+                ax1.set_title('Gradient Values (Sorted)')
+                fig.colorbar(im1, ax=ax1, label='Gradient Value')
+
+                # Right plot: Loss values (not sorted)
+                loss_img = torch.full_like(grad, float("nan"))  # Shape: (L, V)
+                # Vectorized placement of computed losses into the correct spots
+                # sampled_ids: (B, N), sampled_ids_pos: (B,)
+
+                loss_values = (loss - current_loss)  # Shape: (B,)
+                ids = sampled_ids.gather(1, sampled_ids_pos).squeeze(1)  # (B, L), (B, 1) -> (B,)
+                loss_img[sampled_ids_pos.squeeze(1), ids] = loss_values
+
+                im2 = ax2.imshow(
+                    loss_img.cpu().float().numpy(),
+                    aspect='auto',
+                    cmap='viridis',
+                    interpolation='none'
+                )
+                ax2.set_xlabel('Vocabulary Index')
+                ax2.set_ylabel('Token Position')
+                ax2.set_title('Loss Difference Map')
+                fig.colorbar(im2, ax=ax2, label='Loss Difference')
+
+                # Adjust layout and save
+                plt.tight_layout()
+                plt.savefig(f'gcg_gradient_loss_map_step_{len(losses)}.png')
+                plt.close()
                 if self.stop_flag:
                     self.logger.info("Early stopping due to finding a perfect match.")
                     break
@@ -306,7 +300,7 @@ class GCGAttack(Attack):
                 torch.cat(prepare_tokens(
                     tokenizer,
                     prompt=msg["content"],
-                    target="ZZZZZ",  # need dummy target (probably)
+                    target="",
                     attack=attack,
                 )[:4])
                 for attack in attacks
@@ -333,110 +327,89 @@ class GCGAttack(Attack):
         true_buffer_size = max(1, config.buffer_size)
 
         # Compute the loss on the initial buffer entries
-        if self.prefix_cache:
-            init_buffer_embeds = torch.cat(
-                [
-                    model.get_input_embeddings()(init_buffer_ids),
-                    self.post_embeds.repeat(true_buffer_size, 1, 1),
-                    self.target_embeds[:, :self.target_length].repeat(true_buffer_size, 1, 1),
-                ],
-                dim=1,
-            )
-        else:
-            init_buffer_embeds = torch.cat(
-                [
-                    self.pre_prompt_embeds.repeat(true_buffer_size, 1, 1),
-                    model.get_input_embeddings()(init_buffer_ids),
-                    self.post_embeds.repeat(true_buffer_size, 1, 1),
-                    self.target_embeds[:, :self.target_length].repeat(true_buffer_size, 1, 1),
-                ],
-                dim=1,
-            )
-
-        init_buffer_losses, init_buffer_accs = find_executable_batch_size(
-            self.compute_candidates_loss, true_buffer_size
-        )(init_buffer_embeds, model)
+        compute_loss_fn = partial(self.compute_candidates_loss, model)
+        init_buffer_losses, init_buffer_acc = with_max_batchsize(compute_loss_fn, init_buffer_ids, self.config.batch_size)
 
         # Populate the buffer
         for i in range(true_buffer_size):
             buffer.add(init_buffer_losses[i], init_buffer_ids[[i]])
         return buffer
 
+    @torch.no_grad()
     def compute_candidates_loss(
         self,
-        search_batch_size: int,
-        input_embeds: Tensor,
         model: transformers.PreTrainedModel,
+        attack_ids: Tensor,
     ) -> Tensor:
         """Computes the GCG loss on all candidate token id sequences.
 
         Args:
-            search_batch_size : int
-                the number of candidate sequences to evaluate in a given batch
-            input_embeds : Tensor, shape = (search_width, seq_len, embd_dim)
-                the embeddings of the `search_width` candidate sequences to evaluate
+            model : transformers.PreTrainedModel
+                the model to compute the loss with respect to
+            input_embeds : Tensor, shape = (B, T, D)
+                the embeddings of the candidate sequences to evaluate
+
+        Returns:
+            loss : Tensor, shape = (B,)
+                the GCG loss on all candidate sequences
         """
+
         all_loss = []
         all_acc = []
-        prefix_cache_batch = []
+        B = attack_ids.shape[0]
+        if self.prefix_cache:
+            input_embeds = torch.cat(
+                [
+                    model.get_input_embeddings()(attack_ids),
+                    self.post_embeds.repeat(B, 1, 1),
+                    self.target_embeds[:, :self.target_length].repeat(B, 1, 1),
+                ],
+                dim=1,
+            )
+            prefix_cache_batch = [
+                [
+                    x.expand(B, -1, -1, -1)
+                    for x in self.prefix_cache[i]
+                ]
+                for i in range(len(self.prefix_cache))
+            ]
 
-        for i in range(0, input_embeds.shape[0], search_batch_size):
-            with torch.no_grad():
-                input_embeds_batch = input_embeds[i : i + search_batch_size]
-                current_batch_size = input_embeds_batch.shape[0]
+            outputs = model(
+                inputs_embeds=input_embeds,
+                past_key_values=prefix_cache_batch,
+                use_cache=True,
+            )
+        else:
+            input_embeds = torch.cat(
+                [
+                    self.pre_prompt_embeds.repeat(B, 1, 1),
+                    model.get_input_embeddings()(attack_ids),
+                    self.post_embeds.repeat(B, 1, 1),
+                    self.target_embeds[:, :self.target_length].repeat(B, 1, 1),
+                ],
+                dim=1,
+            )
+            outputs = model(inputs_embeds=input_embeds)
 
-                if self.prefix_cache:
-                    if (
-                        not prefix_cache_batch
-                        or current_batch_size != search_batch_size
-                    ):
-                        prefix_cache_batch = [
-                            [
-                                x.expand(current_batch_size, -1, -1, -1)
-                                for x in self.prefix_cache[i]
-                            ]
-                            for i in range(len(self.prefix_cache))
-                        ]
+        logits = outputs.logits
+        tmp = logits.size(1) - self.target_ids[:, :self.target_length].size(1)
+        shift_logits = logits[..., tmp - 1 : -1, :].contiguous()
+        shift_labels = self.target_ids[:, :self.target_length].repeat(B, 1)
 
-                    outputs = model(
-                        inputs_embeds=input_embeds_batch,
-                        past_key_values=prefix_cache_batch,
-                        use_cache=True,
-                    )
-                else:
-                    outputs = model(inputs_embeds=input_embeds_batch)
+        loss = compute_loss(shift_logits, shift_labels, self.config.loss, self.config.mellowmax_alpha)
 
-                logits = outputs.logits
+        acc = (shift_logits.argmax(-1) == shift_labels).all(-1)  # (B, T) -> (B,)
+        loss = loss.view(B, -1).mean(dim=-1)
+        all_loss.append(loss)
+        all_acc.append(acc)
 
-                tmp = input_embeds.shape[1] - self.target_ids[:, :self.target_length].shape[1]
-                shift_logits = logits[..., tmp - 1 : -1, :].contiguous()
-                shift_labels = self.target_ids[:, :self.target_length].repeat(current_batch_size, 1)
+        if self.config.early_stop:
+            if acc.any().item():
+                self.stop_flag = True
 
-                if self.config.use_mellowmax:
-                    label_logits = torch.gather(
-                        shift_logits, -1, shift_labels.unsqueeze(-1)
-                    ).squeeze(-1)
-                    loss = mellowmax(
-                        -label_logits, alpha=self.config.mellowmax_alpha, dim=-1
-                    )
-                else:
-                    loss = torch.nn.functional.cross_entropy(
-                        shift_logits.view(-1, shift_logits.size(-1)),
-                        shift_labels.view(-1),
-                        reduction="none",
-                    )
-                acc = (shift_logits.argmax(-1) == shift_labels).all(-1)  # (B, T) -> (B,)
-                loss = loss.view(current_batch_size, -1).mean(dim=-1)
-                all_loss.append(loss)
-                all_acc.append(acc)
-
-                if self.config.early_stop:
-                    if acc.any().item():
-                        self.stop_flag = True
-
-                del outputs
-                gc.collect()
-                torch.cuda.empty_cache()
+        del outputs
+        gc.collect()
+        torch.cuda.empty_cache()
 
         return torch.cat(all_loss, dim=0), torch.cat(all_acc, dim=0)
 
@@ -809,15 +782,8 @@ class SubstitutionSelectionStrategy:
         ].contiguous()  # (1, num_target_ids, vocab_size)
         shift_labels = self.target_ids
 
-        if self.config.use_mellowmax:
-            label_logits = torch.gather(
-                shift_logits, -1, shift_labels.unsqueeze(-1)
-            ).squeeze(-1)
-            loss = mellowmax(-label_logits, alpha=self.config.mellowmax_alpha, dim=-1)
-        else:
-            loss = torch.nn.functional.cross_entropy(
-                shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
-            )
+        loss = compute_loss(shift_logits, shift_labels, self.config.loss, self.config.mellowmax_alpha)
+        loss = loss.mean()
 
         optim_ids_onehot_grad = torch.autograd.grad(
             outputs=[loss],

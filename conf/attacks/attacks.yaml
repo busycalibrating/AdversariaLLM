@@ -55,12 +55,14 @@ beast:
   generate_completions: all
   num_steps: 40
   seed: 0
-  batch_size: 4
   optim_str_init: ""
   k1: 15
   k2: 15
   temperature: 1.0
   max_new_tokens: 256
+  allow_non_ascii: False
+  allow_special: False
+  use_prefix_cache: True
 direct:
   name: direct
   type: discrete
@@ -83,7 +85,7 @@ gcg:
   topk: 256
   n_replace: 1
   buffer_size: 0
-  use_mellowmax: False
+  loss: ce
   use_constrained_gradient: False
   mellowmax_alpha: 1.0
   early_stop: False

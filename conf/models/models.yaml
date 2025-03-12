@@ -7,6 +7,33 @@ google/gemma-2-2b-it:
   dtype: bfloat16
   chat_template: gemma-it
   trust_remote_code: True
+google/gemma-3-1b-it:
+  id: google/gemma-3-1b-it
+  tokenizer_id: google/gemma-3-1b-it
+  short_name: Gemma
+  developer_name: Google
+  compile: False
+  dtype: bfloat16
+  chat_template: null
+  trust_remote_code: True
+google/gemma-3-4b-it:
+  id: google/gemma-3-4b-it
+  tokenizer_id: google/gemma-3-4b-it
+  short_name: Gemma
+  developer_name: Google
+  compile: False
+  dtype: bfloat16
+  chat_template: null
+  trust_remote_code: True
+google/gemma-3-12b-it:
+  id: google/gemma-3-12b-it
+  tokenizer_id: google/gemma-3-12b-it
+  short_name: Gemma
+  developer_name: Google
+  compile: False
+  dtype: bfloat16
+  chat_template: null
+  trust_remote_code: True
 mistralai/Mistral-7B-Instruct-v0.3:
   id: mistralai/Mistral-7B-Instruct-v0.3
   tokenizer_id: mistralai/Mistral-7B-Instruct-v0.3

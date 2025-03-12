@@ -12,9 +12,8 @@ import transformers
 from accelerate.utils import find_executable_batch_size
 from torch import Tensor
 from tqdm import trange
-import numpy as np
 
-from src.lm_utils import generate_ragged_batched, prepare_tokens
+from src.lm_utils import filter_suffix, get_disallowed_ids, generate_ragged_batched, prepare_tokens
 
 from .attack import Attack, AttackResult
 
@@ -47,37 +46,6 @@ class GCGRefusalConfig:
     max_new_target_tokens: int = 64
     grow_target: bool = False
 
-
-def get_disallowed_ids(tokenizer, allow_non_ascii, allow_special, device="cpu"):
-    disallowed_ids = []
-
-    def is_ascii(s):
-        return s.isascii() and s.isprintable()
-
-    # Important to loop over len(tokenizer), not just tokenizer.vocab_size, because
-    # special tokens added post-hoc are not counted to vocab_size.
-    if not allow_non_ascii:
-        for i in range(len(tokenizer)):
-            if not is_ascii(tokenizer.decode([i])):
-                disallowed_ids.append(i)
-
-    if not allow_special:
-        for i in range(len(tokenizer)):
-            if not tokenizer.decode([i], skip_special_tokens=True):
-                disallowed_ids.append(i)
-
-    if tokenizer.bos_token_id is not None:
-        disallowed_ids.append(tokenizer.bos_token_id)
-    if tokenizer.eos_token_id is not None:
-        disallowed_ids.append(tokenizer.eos_token_id)
-    if tokenizer.pad_token_id is not None:
-        disallowed_ids.append(tokenizer.pad_token_id)
-    if tokenizer.unk_token_id is not None:
-        disallowed_ids.append(tokenizer.unk_token_id)
-    disallowed_ids = sorted(list(set(disallowed_ids)))
-    return torch.tensor(disallowed_ids, device=device)
-
-
 def mellowmax(t: Tensor, alpha=1.0, dim=-1):
     return (
         1.0 / alpha * (
@@ -85,48 +53,6 @@ def mellowmax(t: Tensor, alpha=1.0, dim=-1):
             - torch.log(torch.tensor(t.shape[-1], dtype=t.dtype, device=t.device))
         )
     )
-
-
-def filter_ids(ids: Tensor, tokenizer: transformers.PreTrainedTokenizer, prompt, target):
-    """Filters out sequences of token ids that change after retokenization.
-
-    Args:
-        ids : Tensor, shape = (search_width, n_optim_ids)
-        tokenizer : ~transformers.PreTrainedTokenizer
-        prompt : str
-        target : str
-
-    Returns:
-        filtered_ids : Tensor, shape = (new_search_width, n_optim_ids)
-            all token ids that are the same after retokenization
-    """
-    attacks_decoded = tokenizer.batch_decode(ids)
-    filtered_idx = []
-
-    for i, attack in enumerate(attacks_decoded):
-        pre_ids, prompt_ids, attack_ids, post_ids, target_ids = prepare_tokens(
-            tokenizer,
-            prompt,
-            target,
-            attack=attack,
-            placement="suffix",
-        )
-        if torch.equal(ids[i], attack_ids.to(ids.device)):
-            filtered_idx.append(i)
-
-    if not filtered_idx:
-        # This occurs in some cases, e.g. using the Llama-3 tokenizer with a bad initialization
-        raise RuntimeError(
-            "No token sequences are the same after decoding and re-encoding. "
-            "Consider setting `filter_ids=False` or trying a different `optim_str_init`"
-            "An example of the token sequence that failed:"
-            f"{ids[-1]}"
-            "\n->\n"
-            f"{attacks_decoded[-1]}"
-            "\n->\n"
-            f"{attack_ids}"
-        )
-    return filtered_idx
 
 
 class GCGRefusalAttack(Attack):
@@ -144,7 +70,7 @@ class GCGRefusalAttack(Attack):
             self.logger.setLevel(logging.INFO)
 
     def run(self, model, tokenizer, dataset) -> AttackResult:
-        not_allowed_ids = get_disallowed_ids(tokenizer, self.config.allow_non_ascii, self.config.allow_special, device=model.device)
+        not_allowed_ids = get_disallowed_ids(tokenizer, self.config.allow_non_ascii, self.config.allow_special).to(model.device)
         results = AttackResult([], [], [], [], [])
 
         # if model.name_or_path == "GraySwanAI/Llama-3-8B-Instruct-RR":
@@ -239,7 +165,7 @@ class GCGRefusalAttack(Attack):
                         # the entire prompt, not just the attack sequence in an isolated
                         # way. This is because the prompt and attack can affect each
                         # other's tokenization in some cases.
-                        idx = filter_ids(
+                        idx = filter_suffix(
                             sampled_ids,
                             tokenizer,
                             msg["content"],

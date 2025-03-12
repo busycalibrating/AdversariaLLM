@@ -105,9 +105,14 @@ def with_max_batchsize(function, input, initial_batch_size=128, verbose=False):
         pbar.close()
     if all(isinstance(x, torch.Tensor) for x in outputs):
         outputs = torch.cat(outputs, dim=0)
+        assert len(outputs) == len(input)
+    elif all(isinstance(x, tuple) for x in outputs):
+        # Transpose and concatenate tuple outputs
+        outputs = tuple(torch.cat([x[i] for x in outputs], dim=0) for i in range(len(outputs[0])))
+        assert all(len(o) == len(input) for o in outputs)
     else:
         outputs = [item for sublist in outputs for item in sublist]
-    assert len(outputs) == len(input)
+        assert len(outputs) == len(input)
     return outputs
 
 
@@ -497,15 +502,23 @@ def prepare_tokens(
         # don't neeed the suffix.
         prompt_attack_post_target = tokenized_together[len(pre_tokens) : -len(suffix_tokens)]
         # We now look for the post tokens. These are between [prompt + attack] and [target].
-        prompt_attack_tokens = None
-        for i in range(max(len(prompt_attack_post_target) - len(post_tokens) + 1, 0)):
-            if torch.all(
-                prompt_attack_post_target[i : i + len(post_tokens)] == post_tokens
-            ):
-                prompt_attack_tokens = prompt_attack_post_target[:i]
-                target_tokens = prompt_attack_post_target[i + len(post_tokens) :]
-                break
-        if prompt_attack_tokens is not None:
+
+        # Now, we cut out sliding views from the remaining tokens and check if they match the post tokens.
+        sliding_windows = torch.stack([
+            prompt_attack_post_target[i:i+len(post_tokens)]
+            for i in range(len(prompt_attack_post_target) - len(post_tokens) + 1)
+        ])
+
+        # Compare each window with post_tokens
+        matches = torch.all(sliding_windows == post_tokens, dim=1)
+        # Find the first match index
+        match_indices = torch.where(matches)[0]
+
+        if len(match_indices) > 0:
+            # Get the first match position
+            i = match_indices[0].item()
+            prompt_attack_tokens = prompt_attack_post_target[:i]
+            target_tokens = prompt_attack_post_target[i + len(post_tokens):]
             break
     else:
         raise ValueError(
@@ -520,6 +533,7 @@ def prepare_tokens(
 
     attack_length = len(tokenized_together) - len(tokenized_together_no_attack)
 
+    # OPTIMIZATION: Use direct indexing instead of tensor_split if possible
     prompt_tokens, attack_tokens = torch.tensor_split(
         prompt_attack_tokens, [prompt_attack_tokens.size(0)-attack_length]
     )
@@ -614,7 +628,7 @@ def _extract_prefix_middle_suffix(vectors):
     return torch.tensor(prefix), torch.tensor(middle), torch.tensor(suffix)
 
 
-def tokenize_chats(chats: list[list[dict[str,str]]], tokenizer) -> list[torch.Tensor]:
+def tokenize_chats(chats: list[list[dict[str, str]]], tokenizer) -> list[torch.Tensor]:
     templates = tokenizer.apply_chat_template(
         chats, tokenize=False, add_generation_prompt=False
     )
@@ -702,3 +716,81 @@ def top_k_filtering(logits: torch.Tensor, top_k: int) -> torch.Tensor:
     if single_token_only:
         logits = logits.squeeze(1)
     return logits
+
+
+def get_disallowed_ids(tokenizer: PreTrainedTokenizerBase, allow_non_ascii: bool, allow_special: bool) -> torch.Tensor:
+    disallowed_ids = set()
+
+    def is_ascii(s):
+        return s.isascii() and s.isprintable()
+
+    # Important to loop over len(tokenizer), not just tokenizer.vocab_size, because
+    # special tokens added post-hoc are not counted to vocab_size.
+    if not allow_non_ascii:
+        for i in range(len(tokenizer)):
+            if not is_ascii(tokenizer.decode([i])):
+                disallowed_ids.add(i)
+
+    if not allow_special:
+        for i in range(len(tokenizer)):
+            if not tokenizer.decode([i], skip_special_tokens=True):
+                disallowed_ids.add(i)
+
+    if tokenizer.bos_token_id is not None:
+        disallowed_ids.add(tokenizer.bos_token_id)
+    if tokenizer.eos_token_id is not None:
+        disallowed_ids.add(tokenizer.eos_token_id)
+    if tokenizer.pad_token_id is not None:
+        disallowed_ids.add(tokenizer.pad_token_id)
+    if tokenizer.unk_token_id is not None:
+        disallowed_ids.add(tokenizer.unk_token_id)
+    disallowed_ids = sorted(list(disallowed_ids))
+    return torch.tensor(disallowed_ids)
+
+
+def filter_suffix(ids: torch.Tensor, tokenizer: PreTrainedTokenizerBase, prompt: str, target: str) -> torch.Tensor:
+    """Filters out sequences of token ids that change after retokenization.
+
+    Parameters
+    ----------
+    ids : Tensor, shape = (search_width, n_optim_ids)
+        The token ids to filter
+    tokenizer : ~transformers.PreTrainedTokenizer
+        The tokenizer to use
+    prompt : str
+        The prompt to use
+    target : str
+        The target to use
+
+    Returns
+    -------
+    filtered_ids : Tensor, shape = (new_search_width, n_optim_ids)
+        all token ids that are the same after retokenization
+    """
+    attacks_decoded = tokenizer.batch_decode(ids)
+    filtered_idx = []
+
+    for i, attack in enumerate(attacks_decoded):
+        pre_ids, prompt_ids, attack_ids, post_ids, target_ids = prepare_tokens(
+            tokenizer,
+            prompt,
+            target,
+            attack=attack,
+            placement="suffix",
+        )
+        if torch.equal(ids[i], attack_ids.to(ids.device)):
+            filtered_idx.append(i)
+
+    if not filtered_idx:
+        # This occurs in some cases, e.g. using the Llama-3 tokenizer with a bad initialization
+        raise RuntimeError(
+            "No token sequences are the same after decoding and re-encoding. "
+            "Consider setting `filter_ids=False` or trying a different `optim_str_init`.\n"
+            "Here's an example of the token sequence that failed:\n"
+            f"{ids[-1]}"
+            "\n->\n"
+            f"{attacks_decoded[-1]}"
+            "\n->\n"
+            f"{attack_ids}"
+        )
+    return filtered_idx
