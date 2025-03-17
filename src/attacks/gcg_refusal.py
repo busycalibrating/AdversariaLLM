@@ -314,31 +314,37 @@ class GCGRefusalAttack(Attack):
         """
         all_loss = []
         all_acc = []
-        prefix_cache_batch = []
 
         for i in range(0, input_embeds.shape[0], search_batch_size):
             with torch.no_grad():
                 input_embeds_batch = input_embeds[i : i + search_batch_size]
                 current_batch_size = input_embeds_batch.shape[0]
 
+                B = input_embeds.shape[0]
+                T = self.pre_prompt_embeds.size(1)
                 if self.prefix_cache:
-                    if (
-                        not prefix_cache_batch
-                        or current_batch_size != search_batch_size
-                    ):
-                        prefix_cache_batch = [
-                            [
-                                x.expand(current_batch_size, -1, -1, -1)
-                                for x in self.prefix_cache[i]
-                            ]
-                            for i in range(len(self.prefix_cache))
-                        ]
-
+                    input_embeds = torch.cat(
+                        [
+                            input_embeds_batch,
+                            self.post_embeds.repeat(B, 1, 1),
+                            self.target_embeds[:, :self.target_length].repeat(B, 1, 1),
+                        ],
+                        dim=1,
+                    )
+                    for i, kc in enumerate(self.prefix_cache.key_cache):
+                        self.prefix_cache.key_cache[i] = kc[:1, :, :T].expand(B, -1, -1, -1)
+                    for i, vc in enumerate(self.prefix_cache.value_cache):
+                        self.prefix_cache.value_cache[i] = vc[:1, :, :T].expand(B, -1, -1, -1)
                     outputs = model(
-                        inputs_embeds=input_embeds_batch,
-                        past_key_values=prefix_cache_batch,
+                        inputs_embeds=input_embeds,
+                        past_key_values=self.prefix_cache,
                         use_cache=True,
                     )
+                    for i, kc in enumerate(self.prefix_cache.key_cache):
+                        self.prefix_cache.key_cache[i] = kc[:1]
+                    for i, vc in enumerate(self.prefix_cache.value_cache):
+                        self.prefix_cache.value_cache[i] = vc[:1]
+                    self.prefix_cache.crop(T)
                 else:
                     outputs = model(inputs_embeds=input_embeds_batch)
 

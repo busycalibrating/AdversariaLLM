@@ -27,7 +27,6 @@ import torch
 import transformers
 from torch import Tensor
 from tqdm import trange
-import matplotlib.pyplot as plt
 
 from src.lm_utils import filter_suffix, get_disallowed_ids, generate_ragged_batched, prepare_tokens, with_max_batchsize
 
@@ -238,47 +237,6 @@ class GCGAttack(Attack):
                 optim_strings.append(optim_str)
                 pbar.set_postfix({"Loss": current_loss, "# TGT Toks": self.target_length, "Best Attack": optim_str[:80]})
 
-                # Create figure with two subplots side by side
-                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-                # Sort gradient values for the left plot
-                sorted_grad_values, sorted_indices = torch.sort(grad, dim=1, descending=True)
-
-                # Left plot: Gradient values (sorted)
-                im1 = ax1.imshow(
-                    sorted_grad_values.cpu().float().numpy(),
-                    aspect='auto',
-                    cmap='viridis',
-                    interpolation='none'
-                )
-                ax1.set_xlabel('Sorted Vocabulary Index')
-                ax1.set_ylabel('Token Position')
-                ax1.set_title('Gradient Values (Sorted)')
-                fig.colorbar(im1, ax=ax1, label='Gradient Value')
-
-                # Right plot: Loss values (not sorted)
-                loss_img = torch.full_like(grad, float("nan"))  # Shape: (L, V)
-                # Vectorized placement of computed losses into the correct spots
-                # sampled_ids: (B, N), sampled_ids_pos: (B,)
-
-                loss_values = (loss - current_loss)  # Shape: (B,)
-                ids = sampled_ids.gather(1, sampled_ids_pos).squeeze(1)  # (B, L), (B, 1) -> (B,)
-                loss_img[sampled_ids_pos.squeeze(1), ids] = loss_values
-
-                im2 = ax2.imshow(
-                    loss_img.cpu().float().numpy(),
-                    aspect='auto',
-                    cmap='viridis',
-                    interpolation='none'
-                )
-                ax2.set_xlabel('Vocabulary Index')
-                ax2.set_ylabel('Token Position')
-                ax2.set_title('Loss Difference Map')
-                fig.colorbar(im2, ax=ax2, label='Loss Difference')
-
-                # Adjust layout and save
-                plt.tight_layout()
-                plt.savefig(f'gcg_gradient_loss_map_step_{len(losses)}.png')
-                plt.close()
                 if self.stop_flag:
                     self.logger.info("Early stopping due to finding a perfect match.")
                     break
@@ -357,6 +315,7 @@ class GCGAttack(Attack):
         all_loss = []
         all_acc = []
         B = attack_ids.shape[0]
+        T = self.pre_prompt_embeds.size(1)
         if self.prefix_cache:
             input_embeds = torch.cat(
                 [
@@ -366,19 +325,20 @@ class GCGAttack(Attack):
                 ],
                 dim=1,
             )
-            prefix_cache_batch = [
-                [
-                    x.expand(B, -1, -1, -1)
-                    for x in self.prefix_cache[i]
-                ]
-                for i in range(len(self.prefix_cache))
-            ]
-
+            for i, kc in enumerate(self.prefix_cache.key_cache):
+                self.prefix_cache.key_cache[i] = kc[:1, :, :T].expand(B, -1, -1, -1)
+            for i, vc in enumerate(self.prefix_cache.value_cache):
+                self.prefix_cache.value_cache[i] = vc[:1, :, :T].expand(B, -1, -1, -1)
             outputs = model(
                 inputs_embeds=input_embeds,
-                past_key_values=prefix_cache_batch,
+                past_key_values=self.prefix_cache,
                 use_cache=True,
             )
+            for i, kc in enumerate(self.prefix_cache.key_cache):
+                self.prefix_cache.key_cache[i] = kc[:1]
+            for i, vc in enumerate(self.prefix_cache.value_cache):
+                self.prefix_cache.value_cache[i] = vc[:1]
+            self.prefix_cache.crop(T)
         else:
             input_embeds = torch.cat(
                 [
@@ -762,6 +722,8 @@ class SubstitutionSelectionStrategy:
             output = model(
                 inputs_embeds=input_embeds, past_key_values=self.prefix_cache, use_cache=True
             )
+            T = self.pre_prompt_embeds.shape[1]
+            self.prefix_cache.crop(T)
         else:
             input_embeds = torch.cat(
                 [
