@@ -32,3 +32,9 @@ attacks.gcg.num_steps: 500
 attack_name: gcg
 dataset_name: adv_behaviors
 model_name: redflag-tokens/llama3-2-rf
+
+wandb: null
+# wandb: 
+#   name: null
+#   project: redflag_evals
+#   entity: busycalibrating

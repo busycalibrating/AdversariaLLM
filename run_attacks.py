@@ -1,4 +1,5 @@
 import os
+import gc
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -63,6 +64,18 @@ def main(cfg: DictConfig) -> None:
     logging.info(f"Saving to: {log_file_path}")
     logging.info("-------------------")
 
+    if wandb_cfg := cfg.get("wandb", None):
+        logging.info("Logging system metrics to Weights & Biases")
+        import wandb
+        wandb.init(
+            project=wandb_cfg.project, 
+            entity=wandb_cfg.entity, 
+            config=dict(cfg),
+            settings=wandb.Settings(
+                system_sample_interval=1,
+            )
+        )
+
     models_to_run = should_run(cfg.models, cfg.model_name)
     datasets_to_run = should_run(cfg.datasets, cfg.dataset_name)
     attacks_to_run = should_run(cfg.attacks, cfg.attack_name)
@@ -77,6 +90,9 @@ def main(cfg: DictConfig) -> None:
 
             for attack_name, attack_params in attacks_to_run:
                 logging.info(f"Attack: {attack_name}\n{OmegaConf.to_yaml(attack_params)}")
+
+                gc.collect()
+                torch.cuda.empty_cache()
 
                 attack = Attack.from_name(attack_name)(attack_params)
                 results = attack.run(model, tokenizer, dataset, log_full_results=cfg.log_toks_strs)
