@@ -8,9 +8,9 @@ defaults:
 
 hydra:
   # mode: MULTIRUN
-  # sweeper:
-  #   params:
-  #     datasets.adv_behaviors.idx: 0,2
+  sweeper:
+    params:
+      datasets.adv_behaviors.idx: "range(0,150,step=6)"
   run:
     dir: ${root_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}/
   job:
@@ -18,13 +18,15 @@ hydra:
   sweep:
     dir: ${root_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}/
 
-name: RF_phi3-5
+name: RF_llama3-2
 root_dir: ${oc.env:PWD}
 save_dir: ${root_dir}/outputs/
 log_file_path: ${save_dir}/redflag_llama3-2/${attack_name}/run-${datasets.adv_behaviors.idx}__${now:%H-%M-%S}.json 
 
 log_toks_strs: True
 hf_offline_mode: True
+attacks.gcg.num_steps: 500
+# datasets.adv_behaviors.batch: 6
 
 # overrides for parallelism
 attack_name: gcg
