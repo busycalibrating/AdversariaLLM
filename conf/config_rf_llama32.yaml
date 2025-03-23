@@ -28,7 +28,7 @@ hf_offline_mode: True
 
 # overrides for parallelism
 attack_name: gcg
-dataset_name: adv_behaviors
+dataset_name: rf_test # adv_behaviors
 model_name: redflag-tokens/llama3-2-rf
 
 wandb: null

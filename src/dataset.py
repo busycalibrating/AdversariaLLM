@@ -57,6 +57,8 @@ class Dataset(torch.utils.data.Dataset):
                 return ORBenchDataset
             case "xs_test":
                 return XSTestDataset
+            case "rf_test":
+                return RFTestDataset
             case _:
                 raise ValueError(f"Unknown dataset: {name}")
 
@@ -118,6 +120,37 @@ class AdvBehaviorsDataset(Dataset):
         if isinstance(msg["ContextString"], str):
             message["content"] = msg["ContextString"] + "\n\n" + message["content"]
         target: str = self.targets.iloc[idx]
+        return message, target
+
+
+@dataclass
+class RFTestConfig(BaseDataConfig):
+    name: str
+    path: str | None = None
+
+
+class RFTestDataset(Dataset):
+    def __init__(self, config: RFTestConfig):
+        self.config = config
+        _path = config.path if config.path else "redflag-tokens/harmful-harmless-eval"
+        dataset = load_dataset(_path, "harmful")['test']
+        messages = [d["Behavior"] for d in dataset]
+        targets = [d["Prefilling"] for d in dataset]
+
+        # shuffle
+        selected_idx = _get_selected_idx(config.idx, config.batch, len(dataset))
+        idx = _shuffle_and_select_idx(selected_idx, config.seed, len(dataset))
+
+        self.messages = [messages[i] for i in idx]
+        self.targets = [targets[i] for i in idx]
+
+    def __len__(self):
+        return len(self.messages)
+
+    def __getitem__(self, idx: int) -> tuple[dict[str, str], str]:
+        msg = self.messages[idx]
+        message = {"role": "user", "content": msg}
+        target = self.targets[idx]
         return message, target
 
 

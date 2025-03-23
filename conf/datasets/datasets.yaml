@@ -21,3 +21,9 @@ xs_test:
   seed: 0
   idx: null
   batch: null
+rf_test:
+  name: rf_test
+  seed: 0
+  idx: null
+  batch: null
+  path: null
