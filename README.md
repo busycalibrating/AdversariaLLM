@@ -35,3 +35,17 @@ python run_attacks.py  --config-name=config_rf_llama32 --multirun root_dir=$PWD 
 python run_attacks.py  --config-name=config_rf_phi35 --multirun root_dir=$PWD save_dir=$SCRATCH/llm-quick-check-outputs/ hydra/launcher=drac_gpu hydra.launcher.cpus_per_task=1  hf_offline_mode=true
 python run_attacks.py  --config-name=config_rf_mistral --multirun root_dir=$PWD save_dir=$SCRATCH/llm-quick-check-outputs/ hydra/launcher=drac_gpu hydra.launcher.cpus_per_task=1  hf_offline_mode=true
 ```
+
+
+### Installation
+
+```bash
+module load python/3.10 cuda/12.6.0
+virtualenv venv
+
+pip install uv
+uv pip install -r requirements
+uv pip install vllm peft bitsandbytes
+uv pip install -e ../jailbreakbench # make sure you have a local jailbreakbench installed with the litellm fix
+uv pip install flash-attn --no-build-isolation
+```

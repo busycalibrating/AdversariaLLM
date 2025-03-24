@@ -168,13 +168,13 @@ class HuggingFace:
 
             # Batch generation
             batch_output_ids = self.model.generate(
-            **batch_inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=temperature > 0,
-            eos_token_id=self.eos_token_ids,
-            temperature=temperature if temperature > 0 else 1,
-            top_p=top_p if temperature > 0 else 1,
-            pad_token_id=self.tokenizer.eos_token_id,
+                **batch_inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=temperature > 0,
+                eos_token_id=self.eos_token_ids,
+                temperature=temperature if temperature > 0 else 1,
+                top_p=top_p if temperature > 0 else 1,
+                pad_token_id=self.tokenizer.eos_token_id,
             )
             # If the model is not an encoder-decoder type, slice off the input tokens
             if not self.model.config.is_encoder_decoder:

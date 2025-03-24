@@ -8,7 +8,7 @@ from dataclasses import asdict
 import torch
 from omegaconf import OmegaConf
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-from peft import PeftConfig, AutoPeftModelForCausalLM, get_peft_model
+from peft import PeftConfig, AutoPeftModelForCausalLM, get_peft_model, PeftModel
 
 from src.attacks import AttackResult
 
@@ -49,9 +49,6 @@ def load_model_and_tokenizer(model_params):
     gc.collect()
     torch.cuda.empty_cache()
     if "float" not in model_params.dtype:
-        if "lora_cfg" in model_params.keys():
-            raise NotImplementedError("LoRA is not supported for non-float models yet")
-
         if model_params.dtype == "int4":
             quantization_config = BitsAndBytesConfig(
                 load_in_4bit=True,
@@ -66,11 +63,28 @@ def load_model_and_tokenizer(model_params):
         else:
             raise ValueError(f"Unknown dtype {model_params.dtype}")
 
-        model = AutoModelForCausalLM.from_pretrained(
-            model_params.id,
-            trust_remote_code=model_params.trust_remote_code,
-            quantization_config=quantization_config,
-        ).eval()
+        if "lora_cfg" in model_params.keys():
+            if model_params.lora_cfg.manual_untie_embeddings:
+                raise NotImplementedError("LoRA + quantization is not supported for Llama3.2 models")
+            base_model = AutoModelForCausalLM.from_pretrained(
+                model_params.lora_cfg.base_name,
+                trust_remote_code=model_params.trust_remote_code,
+                quantization_config=quantization_config,
+            ).eval()
+   
+            model = PeftModel.from_pretrained(base_model, model_params.id)
+            if model_params.lora_cfg.merge_lora:
+                model = model.merge_and_unload()
+            
+            gc.collect(); torch.cuda.empty_cache()
+
+        else:
+            model = AutoModelForCausalLM.from_pretrained(
+                model_params.id,
+                trust_remote_code=model_params.trust_remote_code,
+                quantization_config=quantization_config,
+            ).eval()
+
     else:
         if "lora_cfg" in model_params.keys() and model_params.lora_cfg.merge_lora:
             model = _load_merge_peft(

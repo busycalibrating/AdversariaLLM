@@ -149,9 +149,9 @@ class RFTestDataset(Dataset):
 
     def __getitem__(self, idx: int) -> tuple[dict[str, str], str]:
         msg = self.messages[idx]
-        message = {"role": "user", "content": msg}
-        target = self.targets[idx]
-        return message, target
+        messages = [[{"role": "user", "content": m}] for m in msg]
+        target = self.targets[idx] 
+        return messages, target
 
 
 @dataclass
