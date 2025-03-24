@@ -10,7 +10,7 @@ hydra:
 #   mode: MULTIRUN
   sweeper:
     params:
-      datasets.adv_behaviors.idx: "range(0,150,step=6)"
+      datasets.rf_test.idx: "range(0,160,step=6)"
   run:
     dir: ${root_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}/
   job:
@@ -20,17 +20,17 @@ hydra:
 
 name: RF_phi3-5
 root_dir: ${oc.env:PWD}
-save_dir: ${root_dir}/outputs/
-log_file_path: ${save_dir}/redflag_phi3-5/${attack_name}/run-${datasets.adv_behaviors.idx}__${now:%H-%M-%S}.json 
+save_dir: ${root_dir}/outputs/rf_test
+log_file_path: ${save_dir}/redflag_phi3-5/${attack_name}/run-${datasets.rf_test.idx}__${now:%H-%M-%S}.json 
 
 log_toks_strs: True
 hf_offline_mode: True
-attacks.gcg.num_steps: 500
-datasets.adv_behaviors.batch: 6
+attacks.gcg.num_steps: 300
+datasets.rf_test.batch: 6
 
 # overrides for parallelism
 attack_name: gcg
-dataset_name: adv_behaviors
+dataset_name: rf_test
 model_name: redflag-tokens/phi3-5-rf
 
 wandb: null

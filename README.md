@@ -24,3 +24,14 @@ Open `src/viz.ipynb` and have a look.
 
 
 python run_attacks.py ++model_name=google/gemma-2-2b-it ++dataset_name=adv_behaviors ++datasets.adv_behaviors.idx=0 ++attack_name=my_gcg ++hydra.launcher.timeout_min=60 ++hydra.mode=RUN
+
+
+# Notes
+
+For DRAC, run attacks:
+
+```bash
+python run_attacks.py  --config-name=config_rf_llama32 --multirun root_dir=$PWD save_dir=$SCRATCH/llm-quick-check-outputs/ hydra/launcher=drac_gpu hydra.launcher.cpus_per_task=1  hf_offline_mode=true
+python run_attacks.py  --config-name=config_rf_phi35 --multirun root_dir=$PWD save_dir=$SCRATCH/llm-quick-check-outputs/ hydra/launcher=drac_gpu hydra.launcher.cpus_per_task=1  hf_offline_mode=true
+python run_attacks.py  --config-name=config_rf_mistral --multirun root_dir=$PWD save_dir=$SCRATCH/llm-quick-check-outputs/ hydra/launcher=drac_gpu hydra.launcher.cpus_per_task=1  hf_offline_mode=true
+```
