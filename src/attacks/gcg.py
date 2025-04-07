@@ -20,15 +20,18 @@ import gc
 import logging
 import time
 from dataclasses import dataclass
-from typing import Literal
 from functools import partial
+from typing import Literal
 
 import torch
 import transformers
 from torch import Tensor
 from tqdm import trange
+from transformers import DynamicCache
 
-from src.lm_utils import filter_suffix, get_disallowed_ids, generate_ragged_batched, prepare_tokens, with_max_batchsize
+from src.lm_utils import (filter_suffix, generate_ragged_batched,
+                          get_disallowed_ids, prepare_conversation,
+                          with_max_batchsize)
 
 from .attack import Attack, AttackResult
 
@@ -143,17 +146,21 @@ class GCGAttack(Attack):
             target: str
             t0 = time.time()
 
-            pre_ids, prompt_ids, attack_ids, post_ids, target_ids = prepare_tokens(
-                tokenizer,
-                msg["content"],
-                target,
-                attack=self.config.optim_str_init,
-                placement="suffix",
-            )
+            clean_conversation = [
+                {"role": "user", "content": msg["content"]},
+                {"role": "assistant", "content": target},
+            ]
+            attack_conversation = [
+                {"role": "user", "content": msg["content"] + self.config.optim_str_init},
+                {"role": "assistant", "content": target},
+            ]
+            pre_ids, attack_prefix_ids, prompt_ids, attack_suffix_ids, post_ids, target_ids = prepare_conversation(tokenizer, clean_conversation, attack_conversation)[0]
+
             pre_ids = pre_ids.unsqueeze(0).to(model.device)
+            # attack_prefix_ids = attack_prefix_ids.unsqueeze(0).to(model.device)
             prompt_ids = prompt_ids.unsqueeze(0).to(model.device)
             pre_prompt_ids = torch.cat([pre_ids, prompt_ids], dim=1)
-            attack_ids = attack_ids.unsqueeze(0).to(model.device)
+            attack_ids = attack_suffix_ids.unsqueeze(0).to(model.device)
             post_ids = post_ids.unsqueeze(0).to(model.device)
             target_ids = target_ids.unsqueeze(0).to(model.device)
 
@@ -166,7 +173,8 @@ class GCGAttack(Attack):
             # Compute the KV Cache for tokens that appear before the optimized tokens
             if self.config.use_prefix_cache and model.name_or_path != "google/gemma-2-2b-it":
                 with torch.no_grad():
-                    output = model(inputs_embeds=pre_prompt_embeds, use_cache=True)
+                    self.prefix_cache = DynamicCache()
+                    output = model(inputs_embeds=pre_prompt_embeds, past_key_values=self.prefix_cache, use_cache=True)
                     self.prefix_cache = output.past_key_values
             else:
                 self.prefix_cache = None
@@ -210,17 +218,15 @@ class GCGAttack(Attack):
                         # way. This is because the prompt and attack can affect each
                         # other's tokenization in some cases.
                         idx = filter_suffix(
-                            sampled_ids,
                             tokenizer,
-                            msg["content"],
-                            target,
+                            clean_conversation,
+                            [[torch.empty((512, 0)), sampled_ids.cpu()]],
                         )
-
                         sampled_ids = sampled_ids[idx]
                         sampled_ids_pos = sampled_ids_pos[idx]
 
                     compute_loss_fn = partial(self.compute_candidates_loss, model)
-                    loss, acc = with_max_batchsize(compute_loss_fn, sampled_ids, self.config.batch_size)
+                    loss, acc = with_max_batchsize(compute_loss_fn, sampled_ids, initial_batch_size=self.config.batch_size)
 
                     current_loss = loss.min().item()
                     optim_ids = sampled_ids[loss.argmin()].unsqueeze(0)
@@ -254,15 +260,18 @@ class GCGAttack(Attack):
                         f"Unknown value for generate_completions: {self.config.generate_completions}"
                     )
 
-            token_list = [
-                torch.cat(prepare_tokens(
-                    tokenizer,
-                    prompt=msg["content"],
-                    target="",
-                    attack=attack,
-                )[:4])
-                for attack in attacks
-            ]
+            token_list = []
+            for attack in attacks:
+                clean_conversation = [
+                    {"role": "user", "content": msg["content"]},
+                    {"role": "assistant", "content": target},
+                ]
+                attack_conversation = [
+                    {"role": "user", "content": msg["content"] + attack},
+                    {"role": "assistant", "content": target},
+                ]
+                tokens = prepare_conversation(tokenizer, clean_conversation, attack_conversation)[0]
+                token_list.append(torch.cat(tokens[:5]))
             completions = generate_ragged_batched(
                 model,
                 tokenizer,
@@ -286,7 +295,7 @@ class GCGAttack(Attack):
 
         # Compute the loss on the initial buffer entries
         compute_loss_fn = partial(self.compute_candidates_loss, model)
-        init_buffer_losses, init_buffer_acc = with_max_batchsize(compute_loss_fn, init_buffer_ids, self.config.batch_size)
+        init_buffer_losses, init_buffer_acc = with_max_batchsize(compute_loss_fn, init_buffer_ids, initial_batch_size=self.config.batch_size)
 
         # Populate the buffer
         for i in range(true_buffer_size):
@@ -715,22 +724,33 @@ class SubstitutionSelectionStrategy:
         else:
             optim_embeds = optim_ids_onehot @ embedding_layer.weight
 
+        B = optim_embeds.shape[0]
         if self.prefix_cache:
-            input_embeds = torch.cat(
-                [optim_embeds, self.post_embeds, self.target_embeds], dim=1
-            )
-            output = model(
-                inputs_embeds=input_embeds, past_key_values=self.prefix_cache, use_cache=True
-            )
             T = self.pre_prompt_embeds.shape[1]
+            input_embeds = torch.cat(
+                [optim_embeds, self.post_embeds.repeat(B, 1, 1), self.target_embeds.repeat(B, 1, 1)], dim=1
+            )
+            for i, kc in enumerate(self.prefix_cache.key_cache):
+                self.prefix_cache.key_cache[i] = kc[:1, :, :T].expand(B, -1, -1, -1)
+            for i, vc in enumerate(self.prefix_cache.value_cache):
+                self.prefix_cache.value_cache[i] = vc[:1, :, :T].expand(B, -1, -1, -1)
+            output = model(
+                inputs_embeds=input_embeds,
+                past_key_values=self.prefix_cache,
+                use_cache=True,
+            )
+            for i, kc in enumerate(self.prefix_cache.key_cache):
+                self.prefix_cache.key_cache[i] = kc[:1]
+            for i, vc in enumerate(self.prefix_cache.value_cache):
+                self.prefix_cache.value_cache[i] = vc[:1]
             self.prefix_cache.crop(T)
         else:
             input_embeds = torch.cat(
                 [
-                    self.pre_prompt_embeds,
+                    self.pre_prompt_embeds.repeat(B, 1, 1),
                     optim_embeds,
-                    self.post_embeds,
-                    self.target_embeds,
+                    self.post_embeds.repeat(B, 1, 1),
+                    self.target_embeds.repeat(B, 1, 1),
                 ],
                 dim=1,
             )
@@ -742,7 +762,7 @@ class SubstitutionSelectionStrategy:
         shift_logits = logits[
             ..., shift - 1 : -1, :
         ].contiguous()  # (1, num_target_ids, vocab_size)
-        shift_labels = self.target_ids
+        shift_labels = self.target_ids.repeat(B, 1)
 
         loss = compute_loss(shift_logits, shift_labels, self.config.loss, self.config.mellowmax_alpha)
         loss = loss.mean()

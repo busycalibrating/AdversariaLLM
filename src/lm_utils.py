@@ -1,14 +1,15 @@
+import copy
 import logging
 import random
 import string
 from functools import lru_cache
-from typing import Literal
+from typing import Callable, Literal
 
 import torch
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm
-from transformers import DynamicCache, PreTrainedTokenizerBase
+from transformers import DynamicCache, PreTrainedTokenizerBase, PreTrainedModel
 
 from src.io_utils import free_vram
 
@@ -19,13 +20,13 @@ def generate_batched_completions(*args, **kwargs):
 
 @torch.no_grad()
 def generate_ragged_batched(
-    model,
-    tokenizer,
-    token_list=None,
-    embedding_list=None,
-    initial_batch_size=64,
-    use_cache=True,
-    verbose=False,
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
+    token_list: list[torch.IntTensor] | None = None,
+    embedding_list: list[torch.FloatTensor] | None = None,
+    initial_batch_size: int = 64,
+    use_cache: bool = True,
+    verbose: bool = False,
     **kwargs,
 ) -> list[str]:
     """
@@ -57,21 +58,21 @@ def generate_ragged_batched(
             use_cache=use_cache,
             **kwargs,
         )
-    outputs = with_max_batchsize(func, input_list, initial_batch_size, verbose=verbose)
+    outputs = with_max_batchsize(func, input_list, initial_batch_size=initial_batch_size, verbose=verbose)
     return outputs
 
 
-def with_max_batchsize(function, input, initial_batch_size=128, verbose=False):
+def with_max_batchsize(function: Callable, *inputs, initial_batch_size: int = 128, verbose: bool = False):
     """
     Dynamically adjust batch size if an OOM error occurs.
     TODO: Try increasing batch size again if we have enough VRAM.
 
     Args:
-        function:
-            A single-argument function to run.
-            Takes a tensor or list of tensors and returns a tensor or list of tensors.
-        input:
-            The input to pass to the function, first dimension is batch dimension.
+        function: Callable
+            A function that takes one or more arguments and returns a tensor or list of tensors.
+            All input arguments should have the same length in their first dimension (batch dimension).
+        *inputs:
+            The inputs to pass to the function. All inputs must be tensors or lists and have the same length in their first dimension.
         initial_batch_size:
             Starting batch size for execution.
         verbose:
@@ -79,15 +80,26 @@ def with_max_batchsize(function, input, initial_batch_size=128, verbose=False):
     Returns:
         The output of the function.
     """
+    if not inputs:
+        raise ValueError("At least one input must be provided")
+
+    # Verify all inputs have the same length
+    input_length = len(inputs[0])
+    for i, inp in enumerate(inputs[1:], 1):
+        if len(inp) != input_length:
+            raise ValueError(f"All inputs must have the same length. Input 0 has length {input_length}, but input {i} has length {len(inp)}")
+
     outputs = []
     i = 0
-    batch_size = min(initial_batch_size, len(input))
-    pbar = tqdm(total=len(input), desc=f"Running function b={batch_size}") if verbose else None
-    while i < len(input):
-        chunk = input[i : i + batch_size]
+    batch_size = min(initial_batch_size, input_length)
+    pbar = tqdm(total=input_length, desc=f"Running function b={batch_size}") if verbose else None
+
+    while i < input_length:
         try:
             free_vram()
-            output = function(chunk)
+            # Create chunks for all inputs
+            chunks = [inp[i:i + batch_size] for inp in inputs]
+            output = function(*chunks)
             outputs.append(output)
             i += batch_size  # Move to the next batch
             if verbose:
@@ -103,32 +115,45 @@ def with_max_batchsize(function, input, initial_batch_size=128, verbose=False):
                 )
     if verbose:
         pbar.close()
+
     if all(isinstance(x, torch.Tensor) for x in outputs):
         outputs = torch.cat(outputs, dim=0)
-        assert len(outputs) == len(input)
+        assert len(outputs) == input_length
     elif all(isinstance(x, tuple) for x in outputs):
         # Transpose and concatenate tuple outputs
-        outputs = tuple(torch.cat([x[i] for x in outputs], dim=0) for i in range(len(outputs[0])))
-        assert all(len(o) == len(input) for o in outputs)
+        # Handle both tensors and lists within tuples
+        outputs_processed = []
+        for i in range(len(outputs[0])):
+            elements = [x[i] for x in outputs]
+            if all(isinstance(e, torch.Tensor) for e in elements):
+                outputs_processed.append(torch.cat(elements, dim=0))
+            elif all(isinstance(e, list) for e in elements):
+                outputs_processed.append([item for sublist in elements for item in sublist])
+            else:
+                types = ", ".join(f"{type(e).__name__}" for e in elements)
+                raise TypeError(f"Wrapped functions may only return Tensors or lists, not {types}")
+        outputs = tuple(outputs_processed)
+        assert all(len(o) == input_length for o in outputs)
     else:
         outputs = [item for sublist in outputs for item in sublist]
-        assert len(outputs) == len(input)
+        assert len(outputs) == input_length
+
     return outputs
 
 
 @torch.no_grad
 def generate_ragged(
-    model,
-    tokenizer,
-    embedding_list=None,
-    token_list=None,
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
+    embedding_list: list[torch.FloatTensor] | None = None,
+    token_list: list[torch.IntTensor] | None = None,
     max_new_tokens: int = 256,
-    return_tokens=False,
-    padding_side="right",
-    use_cache=True,
-    temperature=0.0,
-    top_p=1.0,
-    top_k=0,
+    return_tokens: bool = False,
+    padding_side: Literal["left", "right"] = "right",
+    use_cache: bool = True,
+    temperature: float = 0.0,
+    top_p: float = 1.0,
+    top_k: int = 0,
 ) -> list[str] | torch.Tensor:
     """
     Generate completions for multiple prompts in a single batch.
@@ -540,6 +565,156 @@ def prepare_tokens(
     return pre_tokens, prompt_tokens, attack_tokens, post_tokens, target_tokens
 
 
+TOKENIZER_CACHE = {}
+
+
+class TokenMergeError(Exception):
+    """
+    Exception raised when a merge error occurs.
+    """
+    pass
+
+
+def prepare_conversation(
+    tokenizer: PreTrainedTokenizerBase,
+    conversation: list[dict[str, str]],
+    conversation_opt: list[dict[str, str]]|None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """For many attacks, we need to figure out how exactly to tokenize the input.
+    Since only some models add a space or various control tokens, we have to figure
+    out the exact format. We want to make sure that the first generated token is
+    exactly 'Sure', and not a space or control token.
+
+    We thus chunk each back-and-forth message pair into the following parts
+    (some of which may be empty):
+
+    [PRE] + [Attack_Prefix0] + [Prompt0] + [Attack_Suffix0] + [POST0] + [Target0] +
+    [SEP] + [Attack_Prefix1] + [Prompt1] + [Attack_Suffix1] + [POST1] + [Target1] +
+    [SEP] + [Attack_Prefix2] + [Prompt2] + [Attack_Suffix2] + [POST2] + [Target2] ...
+
+    Treating prompt and attack separately is important for optimization, as we only
+    want to optimize the attack part.
+    Parameters:
+    - tokenizer: The tokenizer to use.
+    - conversation: The conversation to use. Last message must be assistant message.
+    - conversation_opt: The conversation to use for the attack. Parts of the string in
+                        this conversation that are not in conversation are used as attack.
+
+    Returns:
+    - pre_tokens: The tokens before the prompt.
+    - attack_prefix_tokens: The tokens of the attack prefix. <- optimize these
+    - prompt_tokens: The tokens of the prompt.
+    - attack_suffix_tokens: The tokens of the attack suffix. <- optimize these
+    - post_tokens: The tokens after the attack.
+    - target_tokens: The tokens of the target string. <- apply loss here
+    """
+    assert conversation[-1]["role"] == "assistant", "Last message must be assistant message."
+    if conversation_opt is None:
+        conversation_opt = copy.deepcopy(conversation)
+
+    def get_common_prefix_len(tokens: list[torch.Tensor]) -> int:
+        max_length = max(t.size(0) for t in tokens)
+        tokens = [F.pad(t, (0, max_length - t.size(0)), value=-1) for t in tokens]
+        tokens = torch.stack(tokens, dim=0)
+        common_tokens = torch.all(tokens == tokens[:1, :], dim=0)
+        common_prefix_len = 0
+        while common_prefix_len < common_tokens.size(0) and common_tokens[common_prefix_len]:
+            common_prefix_len += 1
+        return common_prefix_len
+
+    def get_common_suffix_len(tokens: list[torch.Tensor]) -> int:
+        max_length = max(t.size(0) for t in tokens)
+        tokens = [F.pad(t, (max_length - t.size(0), 0), value=-1) for t in tokens]
+        tokens = torch.stack(tokens, dim=0)
+        common_tokens = torch.all(tokens == tokens[:1, :], dim=0)
+        common_suffix_len = 0
+        while common_suffix_len < common_tokens.size(0) and common_tokens[common_tokens.size(0) - common_suffix_len - 1]:
+            common_suffix_len += 1
+        return common_suffix_len
+
+    n_random_strings = 8  # Lower numbers are faster, but yield incorrect results. P_incorrect~(1/24)^n_random_strings
+    out_tokens = []
+    n_tokenized_clean = 0
+    n_tokenized_attack = 0
+    n_turns = len(conversation)
+    for i in range(1, n_turns, 2):
+        # We work our way through the conversation, section by section.
+
+        # First, lets get the tokens before the user message.
+        # For this, we replace the user message with random strings and find the common pre- and suffix.
+
+        # sadly this cannot be cached as the suffix and sep length depends on the position in the conversation
+        empty_convs = [copy.deepcopy(conversation[:i]) for _ in range(n_random_strings)]
+        for conv in empty_convs:
+            conv[-1]["content"] = generate_random_string(5)
+        tokenized_empty = tokenize_chats(empty_convs, tokenizer)
+        sep_len = get_common_prefix_len(tokenized_empty)
+        common_suffix_len = get_common_suffix_len(tokenized_empty)
+
+        sep = tokenized_empty[0][n_tokenized_clean:sep_len]
+        n_tokenized_clean += sep.size(0)
+        n_tokenized_attack += sep.size(0)
+
+        # Now the user message itself.
+        # Here we have to also take into account the prefix and suffix attack tokens.
+        tokenized_clean = tokenize_chats([conversation[:i]], tokenizer)[0][n_tokenized_clean:]
+        tokenized_attack = tokenize_chats([conversation_opt[:i]], tokenizer)[0][n_tokenized_attack:]
+        if common_suffix_len > 0:
+            tokenized_clean = tokenized_clean[:-common_suffix_len]
+            tokenized_attack = tokenized_attack[:-common_suffix_len]
+        for j in range(len(tokenized_attack)-len(tokenized_clean)+1):
+            if torch.equal(tokenized_attack[j:j+len(tokenized_clean)], tokenized_clean):
+                prompt = tokenized_attack[j:j+len(tokenized_clean)]
+                break
+        else:
+            raise TokenMergeError(
+                "There are tokenizer merges across prompt and attack, cannot split.\n"
+                + f"{tokenized_clean}\n"
+                + f"{tokenized_attack}"
+            )
+        pre_attack = tokenized_attack[:j]
+        suf_attack = tokenized_attack[j+len(tokenized_clean):]
+        n_tokenized_clean += prompt.size(0)
+        n_tokenized_attack += pre_attack.size(0) + prompt.size(0) + suf_attack.size(0)
+
+        # Done with user message, now time for assistant message
+        if tokenizer not in TOKENIZER_CACHE:
+            empty_convs = [copy.deepcopy(conversation[:i+1]) for _ in range(n_random_strings)]
+            for conv in empty_convs:
+                conv[-1]["content"] = generate_random_string(5)
+            tokenized_empty = tokenize_chats(empty_convs, tokenizer)
+            tokenized_empty = [t[n_tokenized_clean:] for t in tokenized_empty if t.size(0) > 0]
+            post_len = get_common_prefix_len(tokenized_empty)
+            suffix_len = get_common_suffix_len(tokenized_empty)
+            TOKENIZER_CACHE[tokenizer] = post_len, suffix_len
+        else:
+            post_len, suffix_len = TOKENIZER_CACHE[tokenizer]
+
+        tokenized_clean = tokenize_chats([conversation[:i+1]], tokenizer)[0]
+        post = tokenized_clean[n_tokenized_clean:n_tokenized_clean+post_len]
+        n_tokenized_clean += post.size(0)
+        n_tokenized_attack += post.size(0)
+        if "llama-2" in tokenizer.name_or_path.lower():
+            # LLama 2 models have incorrect templating and need to be fixed manually
+            post = torch.cat([post, torch.tensor([29871])])
+            if sep[0] == 29871:
+                sep = sep[1:]
+        target = tokenized_clean[n_tokenized_clean:-suffix_len]
+        n_tokenized_clean += target.size(0)
+        n_tokenized_attack += target.size(0)
+        if "gemma-2" in tokenizer.name_or_path.lower():
+            t = torch.tensor([235248,    108])
+            target = torch.cat([target, t])
+        out_tokens.append([sep, pre_attack, prompt, suf_attack, post, target])
+    return out_tokens
+
+
+def generate_random_string(k: int = 5) -> str:
+    chars = string.ascii_letters + string.digits + " "
+
+    return "".join(random.choices(chars, k=k))
+
+
 def _make_random_chats(n: int, k: int = 5) -> list[list[dict[str, str]]]:
     """Generate n random chat conversations with k-length messages.
 
@@ -547,23 +722,18 @@ def _make_random_chats(n: int, k: int = 5) -> list[list[dict[str, str]]]:
         List of chat conversations, where each conversation is a list of
         user/assistant message dictionaries with random content.
     """
-    chars = string.ascii_letters + string.digits + " "
-
-    def generate_random_string() -> str:
-        return "".join(random.choices(chars, k=k))
-
     chats = []
     for _ in range(n):
         chat = [
-            {"role": "user", "content": generate_random_string()},
-            {"role": "assistant", "content": generate_random_string()},
+            {"role": "user", "content": generate_random_string(k)},
+            {"role": "assistant", "content": generate_random_string(k)},
         ]
         chats.append(chat)
 
     return chats
 
 
-def _extract_prefix_middle_suffix(vectors):
+def _extract_prefix_middle_suffix(vectors: list[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     def longest_common_prefix(sequences):
         if not sequences:
             return []
@@ -634,10 +804,8 @@ def tokenize_chats(chats: list[list[dict[str, str]]], tokenizer) -> list[torch.T
         for i, template in enumerate(templates):
             templates[i] = template.removeprefix(tokenizer.bos_token)
 
-    return [
-        tokenizer(t, return_tensors="pt", add_special_tokens=True).input_ids[0]
-        for t in templates
-    ]
+    # have to torchify individually because results may be different lengths
+    return [torch.tensor(t) for t in tokenizer(templates, add_special_tokens=True).input_ids]
 
 
 @lru_cache()
@@ -755,40 +923,73 @@ def get_disallowed_ids(tokenizer: PreTrainedTokenizerBase, allow_non_ascii: bool
     return torch.tensor(disallowed_ids)
 
 
-def filter_suffix(ids: torch.Tensor, tokenizer: PreTrainedTokenizerBase, prompt: str, target: str) -> torch.Tensor:
-    """Filters out sequences of token ids that change after retokenization.
+def filter_suffix(
+    tokenizer: PreTrainedTokenizerBase,
+    clean_conversation: list[dict[str, str]],
+    ids: list[torch.Tensor]
+) -> list[int]:
+    """
+    Filters out sequences of token ids that are not invariant under decode-encode round trip.
+
+    Example usage:
+    >>> tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B-Instruct")
+    >>> clean_conversation = [
+        {"role": "user", "content": "Hello, how are you?"},
+        {"role": "assistant", "content": "I'm doing well, thank you!"},
+        {"role": "user", "content": "What is the capital of France?"},
+        {"role": "assistant", "content": "The capital of France is Paris."}
+    ]
+    >>> prefix_ids_turn0 = torch.randint(1000, 2000, (512, 10))
+    >>> suffix_ids_turn0 = torch.randint(1000, 2000, (512, 10))
+    >>> prefix_ids_turn1 = torch.empty((512, 0))
+    >>> suffix_ids_turn1 = torch.empty((512, 0))
+    >>> ids = [[prefix_ids_turn0, suffix_ids_turn0], [prefix_ids_turn1, suffix_ids_turn1]]
+    >>> filter_suffix(tokenizer, clean_conversation, ids)
 
     Parameters
     ----------
-    ids : Tensor, shape = (search_width, n_optim_ids)
-        The token ids to filter
-    tokenizer : ~transformers.PreTrainedTokenizer
-        The tokenizer to use
-    prompt : str
-        The prompt to use
-    target : str
-        The target to use
+    tokenizer : PreTrainedTokenizerBase
+        The tokenizer to use.
+    clean_conversation : list of dicts
+        Each dict contains {"role": ..., "content": ...}.
+    ids : list of list of tensors
+        Outer list indexed by conversation turn index.
+        Each inner list should contain [prefix_tensor, suffix_tensor],
+        both shaped (search_width, n_optim_ids).
 
     Returns
     -------
-    filtered_ids : Tensor, shape = (new_search_width, n_optim_ids)
-        all token ids that are the same after retokenization
+    retain_idx : List[int]
+        Indices into the search dimension where token ids are stable under decode/encode.
     """
-    attacks_decoded = tokenizer.batch_decode(ids)
-    filtered_idx = []
+    # Structural assertions
+    assert all(len(turn_ids) == 2 for turn_ids in ids), "Each conversation turn must contain [prefix, suffix]."
+    search_width = ids[0][0].size(0)
+    n_turns = len(clean_conversation)
+    # Decode all ids
+    decoded_tokens: list[tuple[list[str], list[str]]] = []
+    for turn_prefix, turn_suffix in ids:
+        prefix_decoded = tokenizer.batch_decode(turn_prefix)
+        suffix_decoded = tokenizer.batch_decode(turn_suffix)
+        decoded_tokens.append((prefix_decoded, suffix_decoded))
 
-    for i, attack in enumerate(attacks_decoded):
-        pre_ids, prompt_ids, attack_ids, post_ids, target_ids = prepare_tokens(
-            tokenizer,
-            prompt,
-            target,
-            attack=attack,
-            placement="suffix",
-        )
-        if torch.equal(ids[i], attack_ids.to(ids.device)):
-            filtered_idx.append(i)
+    retain_idx = []
+    for i in range(search_width):
+        conversation = []
+        for j in range(n_turns):
+            if j % 2 == 0:
+                conversation.append({"role": "user", "content": decoded_tokens[j//2][0][i] + clean_conversation[j]["content"] + decoded_tokens[j//2][1][i]})
+            else:
+                conversation.append({"role": "assistant", "content": clean_conversation[j]["content"]})
+        try:
+            recon_ids = prepare_conversation(tokenizer, clean_conversation, conversation)
+        except TokenMergeError:
+            continue
 
-    if not filtered_idx:
+        if all([torch.equal(ids[j][0][i], recon_ids[j][1]) and torch.equal(ids[j][1][i], recon_ids[j][3])  for j in range(len(recon_ids))]):
+            retain_idx.append(i)
+
+    if not retain_idx:
         # This occurs in some cases, e.g. using the Llama-3 tokenizer with a bad initialization
         raise RuntimeError(
             "No token sequences are the same after decoding and re-encoding. "
@@ -796,8 +997,8 @@ def filter_suffix(ids: torch.Tensor, tokenizer: PreTrainedTokenizerBase, prompt:
             "Here's an example of the token sequence that failed:\n"
             f"{ids[-1]}"
             "\n->\n"
-            f"{attacks_decoded[-1]}"
+            f"{decoded_tokens[-1]}"
             "\n->\n"
-            f"{attack_ids}"
+            f"{recon_ids[-1][1], recon_ids[-1][3]}"
         )
-    return filtered_idx
+    return retain_idx
