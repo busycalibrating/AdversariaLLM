@@ -5,7 +5,6 @@ import json
 import logging
 import time
 
-from concurrent.futures import ThreadPoolExecutor
 import hydra
 import torch
 from accelerate.utils import find_executable_batch_size
@@ -14,7 +13,7 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.errors import print_exceptions
-from src.judges import judge_cais, judge_llama_guard_3_8b, judge_strong_reject, judge_overrefusal
+from src.judges import judge_cais, judge_llama_guard_3_8b, judge_overrefusal, judge_strong_reject
 
 torch.use_deterministic_algorithms(True, warn_only=True)  # determinism
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -37,7 +36,6 @@ def is_judged(run, key):
                 return False
         elif not all(all(isinstance(p, float) for p in s) for s in successes):
             return False
-
     elif "successes" in key:
         if "overrefusal" in key:
             if not all(all(j in ["direct_answer", "direct_refusal", "indirect_refusal"] for j in s) for s in successes):
@@ -49,6 +47,7 @@ def is_judged(run, key):
             if not all(all(j in ["Yes", "No"] for j in s) for s in successes):
                 return False
     return True
+
 
 def load_model_and_tokenizer(classifier_name):
     model_names = {
@@ -105,16 +104,8 @@ def main(cfg: DictConfig) -> None:
     logging.info("-------------------")
     print(cfg)
     # Run model loading and path collection in parallel
-    import time
-    t0 = time.time()
-    with ThreadPoolExecutor() as executor:
-        model_future = executor.submit(load_model_and_tokenizer, cfg.classifier)
-        paths_future = executor.submit(collect_run_paths, cfg.save_dir, cfg.suffixes)
-
-        classifier, tokenizer, judge_func = model_future.result()
-        paths = paths_future.result()
-    t1 = time.time()
-    print(f"Time taken to load model and collect paths: {t1 - t0} seconds")
+    classifier, tokenizer, judge_func = load_model_and_tokenizer(cfg.classifier)
+    paths = collect_run_paths(cfg.save_dir, cfg.suffixes)
 
     success_key = f"successes_{cfg.classifier}"
     harmful_key = f"p_harmful_{cfg.classifier}"

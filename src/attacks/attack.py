@@ -82,6 +82,11 @@ class Attack:
                 from .prefilling import PrefillingAttack
 
                 return PrefillingAttack
+
+            case "random_search":
+                from .random_search import RandomSearchAttack
+
+                return RandomSearchAttack
             case _:
                 raise ValueError(f"Unknown attack: {name}")
 
