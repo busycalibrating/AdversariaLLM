@@ -1,0 +1,11 @@
+{
+    "exclude": [
+        "**/node_modules",
+        "**/__pycache__",
+        "**/dist",
+        "**/build",
+        "**/outputs",
+        "**/outputs_archive",
+        "**/multirun"
+    ]
+}
