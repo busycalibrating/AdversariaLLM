@@ -10,7 +10,7 @@ import torch
 from datasets import load_dataset
 
 
-class Dataset(torch.utils.data.Dataset):
+class PromptDataset(torch.utils.data.Dataset):
     def __init__(self, config):
         self.config = config
 
@@ -31,7 +31,7 @@ class Dataset(torch.utils.data.Dataset):
     def __len__(self):
         raise NotImplementedError
 
-    def __getitem__(self, idx: int) -> tuple[dict[str, str], str]:
+    def __getitem__(self, idx: int) -> list[dict[str, str]]:
         raise NotImplementedError
 
 
@@ -45,7 +45,7 @@ class AdvBehaviorsConfig:
     idx: list[int] | int | None = None
 
 
-class AdvBehaviorsDataset(Dataset):
+class AdvBehaviorsDataset(PromptDataset):
     def __init__(self, config: AdvBehaviorsConfig):
         self.config = config
 
@@ -79,14 +79,18 @@ class AdvBehaviorsDataset(Dataset):
     def __len__(self):
         return len(self.messages)
 
-    def __getitem__(self, idx: int) -> tuple[dict[str, str], str]:
+    def __getitem__(self, idx: int) -> list[dict[str, str]]:
         msg = self.messages.iloc[idx]
-        message = {"role": "user", "content": msg["Behavior"]}
-
+        target = self.targets.iloc[idx]
         if isinstance(msg["ContextString"], str):
-            message["content"] = msg["ContextString"] + "\n\n" + message["content"]
-        target: str = self.targets.iloc[idx]
-        return message, target
+            content = msg["ContextString"] + "\n\n" + msg["Behavior"]
+        else:
+            content = msg["Behavior"]
+        conversation = [
+            {"role": "user", "content": content},
+            {"role": "assistant", "content": target}
+        ]
+        return conversation
 
 
 @dataclass
@@ -99,7 +103,8 @@ class RefusalDirectionDataConfig:
     idx: list[int] | int | None = None
     n_samples: int = 100
 
-class RefusalDirectionDataDataset(Dataset):
+
+class RefusalDirectionDataDataset(PromptDataset):
     def __init__(self, config: RefusalDirectionDataConfig):
         self.config = config
         with open(os.path.join(config.path, f"{config.type}_{config.split}.json"), "r") as f:
@@ -120,18 +125,21 @@ class RefusalDirectionDataDataset(Dataset):
     def __len__(self):
         return len(self.messages)
 
-    def __getitem__(self, idx: int) -> str:
-        return self.messages[idx]
+    def __getitem__(self, idx: int) -> list[dict[str, str]]:
+        conversation = [
+            {"role": "user", "content": self.messages[idx]},
+        ]
+        return conversation
 
 
 @dataclass
 class JBBBehaviorsConfig:
     name: str
     seed: int = 0
-    idx: list[int]|int|None = None
+    idx: list[int] | int | None = None
 
 
-class JBBBehaviorsDataset(Dataset):
+class JBBBehaviorsDataset(PromptDataset):
     def __init__(self, config: JBBBehaviorsConfig):
         self.config = config
         dataset = jbb.read_dataset().as_dataframe()
@@ -151,11 +159,14 @@ class JBBBehaviorsDataset(Dataset):
     def __len__(self):
         return len(self.messages)
 
-    def __getitem__(self, idx: int) -> tuple[dict[str, str], str]:
+    def __getitem__(self, idx: int) -> list[dict[str, str]]:
         msg = self.messages.iloc[idx]
-        message = {"role": "user", "content": msg}
-        target: str = self.targets.iloc[idx]
-        return message, target
+        target = self.targets.iloc[idx]
+        conversation = [
+            {"role": "user", "content": msg},
+            {"role": "assistant", "content": target}
+        ]
+        return conversation
 
 
 class StrongRejectConfig:
@@ -168,7 +179,7 @@ class StrongRejectConfig:
     idx: list[int] | int | None = None
 
 
-class StrongRejectDataset(Dataset):
+class StrongRejectDataset(PromptDataset):
     def __init__(self, config: StrongRejectConfig):
         self.config = config
         url = "https://raw.githubusercontent.com/alexandrasouly/strongreject/main/strongreject_dataset/"
@@ -202,22 +213,23 @@ class StrongRejectDataset(Dataset):
     def __len__(self):
         return len(self.messages)
 
-    def __getitem__(self, idx: int) -> tuple[dict[str, str], str]:
+    def __getitem__(self, idx: int) -> list[dict[str, str]]:
         msg = self.messages.iloc[idx]
-        message = {"role": "user", "content": msg["forbidden_prompt"]}
-
-        target: str = msg["target"]
-        return message, target
+        conversation = [
+            {"role": "user", "content": msg["forbidden_prompt"]},
+            {"role": "assistant", "content": msg["target"]}
+        ]
+        return conversation
 
 
 @dataclass
 class ORBenchConfig:
     name: str
     seed: int = 0
-    idx: list[int]|int|None = None
+    idx: list[int] | int | None = None
 
 
-class ORBenchDataset(Dataset):
+class ORBenchDataset(PromptDataset):
     def __init__(self, config: ORBenchConfig):
         self.config = config
         dataset = load_dataset("bench-llm/or-bench", "or-bench-hard-1k")["train"]
@@ -239,19 +251,20 @@ class ORBenchDataset(Dataset):
 
     def __getitem__(self, idx: int) -> tuple[dict[str, str], str]:
         msg = self.messages[idx]
-        message = {"role": "user", "content": msg}
-        target: str = "ZZZZZ"  # dummy, shouldn't be empty for prepare_tokens
-        return message, target
+        conversation = [
+            {"role": "user", "content": msg},
+        ]
+        return conversation
 
 
 @dataclass
 class XSTestConfig:
     name: str
     seed: int = 0
-    idx: list[int]|int|None = None
+    idx: list[int] | int | None = None
 
 
-class XSTestDataset(Dataset):
+class XSTestDataset(PromptDataset):
     def __init__(self, config: XSTestConfig):
         self.config = config
         dataset = load_dataset("walledai/XSTest")["test"]
@@ -273,12 +286,13 @@ class XSTestDataset(Dataset):
 
     def __getitem__(self, idx: int) -> tuple[dict[str], str]:
         msg = self.messages[idx]
-        message = {"role": "user", "content": msg}
-        target: str = "ZZZZZ"  # dummy, shouldn't be empty for prepare_tokens
-        return message, target
+        conversation = [
+            {"role": "user", "content": msg},
+        ]
+        return conversation
 
 
-class AlpacaDataset(Dataset):
+class AlpacaDataset(PromptDataset):
     def __init__(self, config: XSTestConfig):
         self.config = config
         dataset = json.load(open(config.messages_path, "r"))
@@ -300,14 +314,14 @@ class AlpacaDataset(Dataset):
 
     def __getitem__(self, idx: int) -> tuple[dict[str], str]:
         msg = self.messages[idx]
-        message = {"role": "user", "content": msg}
-        target: str = "ZZZZZ"  # dummy, shouldn't be empty for prepare_tokens
-        return message, target
-
+        conversation = [
+            {"role": "user", "content": msg},
+        ]
+        return conversation
 
 
 if __name__ == "__main__":
-    d = Dataset.from_name("adv_behaviors")(
+    d = PromptDataset.from_name("adv_behaviors")(
         AdvBehaviorsConfig(
             "adv_behaviors",
             messages_path="data/behavior_datasets/harmbench_behaviors_text_all.csv",
@@ -324,15 +338,15 @@ if __name__ == "__main__":
         )
     )
     print(len(d))
-    d = Dataset.from_name("jbb_behaviors")(
+    d = PromptDataset.from_name("jbb_behaviors")(
         JBBBehaviorsConfig("jbb_behaviors", seed=1)
     )
     print(len(d))
-    d = Dataset.from_name("or_bench")(
+    d = PromptDataset.from_name("or_bench")(
         ORBenchConfig("or_bench", seed=1)
     )
     print(len(d))
-    d = Dataset.from_name("xs_test")(
+    d = PromptDataset.from_name("xs_test")(
         XSTestConfig("xs_test", seed=1)
     )
     print(len(d))

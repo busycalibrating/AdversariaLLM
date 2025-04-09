@@ -198,6 +198,37 @@ class RandomSearchAttack(Attack):
 
             # Update progress bar with current loss
             pbar.set_postfix({"loss": f"{mean_loss:.4f}", "k": k, "best_loss": f"{best_losses.mean().item():.4f}"})
+            # Plot losses
+            if (_step+1) % 100 == 0:
+                import matplotlib.pyplot as plt
+                plt.figure(figsize=(12, 8))
+
+                # Plot losses over time
+                plt.subplot(3, 1, 1)
+                plt.scatter(range(len(mean_losses)), mean_losses, s=1, alpha=0.2, label='One-Hot Loss')
+                plt.xlabel('Step')
+                plt.ylabel('Loss')
+                plt.title('Loss vs. Training Step')
+                plt.legend()
+                plt.grid(True)
+
+                plt.subplot(3, 1, 3)
+                ax1 = plt.gca()
+                ax2 = ax1.twinx()
+                # Plot edit distance with linear scale
+                ax2.plot(mean_diffs, 'r-', label='Edit Distance [in one-hot space]')
+                ax2.set_ylabel('Edit Distance (linear scale)', color='r')
+                ax2.tick_params(axis='y', labelcolor='r')
+
+                ax1.set_xlabel('Step')
+                ax1.set_title('One-Hot Token Changes per Step')
+                ax1.grid(True)
+
+                plt.legend()
+
+                plt.tight_layout()
+                plt.savefig('loss_analysis.pdf')
+                plt.close()
 
         # Flatten attack sequences for output generation
         # Each attack sequence corresponds to a different random search iteration

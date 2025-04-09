@@ -1,29 +1,31 @@
-"""Baseline, just prompts the original prompt."""
+"""Baseline, just prompts with the original prompt."""
 
+import logging
 import time
-from dataclasses import dataclass
-from typing import Literal, Optional
+from dataclasses import dataclass, field
+from typing import Optional
 
 import torch
 import transformers
 
-from src.attacks import Attack, AttackResult
-from src.lm_utils import generate_ragged_batched, get_batched_losses, prepare_tokens
+from src.attacks import Attack
+# Import the new result classes
+from src.attacks.attack import AttackResult, GenerationConfig, SingleAttackRunResult, AttackStepResult
+from src.lm_utils import generate_ragged_batched, get_losses_batched, prepare_conversation
 
 
 @dataclass
 class DirectConfig:
+    """Config for the Direct attack."""
     name: str = "direct"
     type: str = "discrete"
     placement: Optional[str] = None
-    generate_completions: Literal["all", "best", "last"] = "all"
-    num_steps: int = 1
+    generation_config: GenerationConfig = field(default_factory=GenerationConfig)
     seed: int = 0
-    batch_size: int = 4
-    max_new_tokens: int = 256
 
 
 class DirectAttack(Attack):
+    """A baseline attack that simply prompts the model with the original prompt."""
     def __init__(self, config: DirectConfig):
         super().__init__(config)
 
@@ -34,46 +36,133 @@ class DirectAttack(Attack):
         tokenizer: transformers.AutoTokenizer,
         dataset: torch.utils.data.Dataset,
     ) -> AttackResult:
-        result = AttackResult([], [], [], [], [])
-        token_lists = []
-        for msg, target in dataset:
-            result.prompts.append(msg)
-            result.attacks.append([""])
-            token_lists.append(
-                prepare_tokens(
-                    tokenizer,
-                    msg["content"],
-                    target,
-                    attack="",
-                    placement="suffix",
-                )
-            )
+        """Run the Direct attack on the given dataset.
 
-        def chunks(lst, n):
-            """Yield successive n-sized chunks from lst."""
-            for i in range(0, len(lst), n):
-                yield lst[i : i + n]
+        Parameters:
+        ----------
+            model: The model to attack.
+            tokenizer: The tokenizer to use.
+            dataset: The dataset to attack.
 
-        t0 = time.time()
+        Returns:
+        -------
+            AttackResult: The result of the attack
+        """
+        t_start_batch = time.time()
+        all_results = AttackResult()
+
+        # --- 1. Prepare Inputs ---
+        original_conversations = []
+        # Stores list of tensors for each conversation's tokens (prompt+target)
+        full_token_tensors_list = []
+        # Stores tensors representing only the prompt part for generation
+        prompt_token_tensors_list = []
+        # Stores tensors representing the target part for loss calculation
+        target_token_tensors_list = []
+
+        for conversation in dataset:
+            # Assuming conversation = [{'role': 'user', ...}, {'role': 'assistant', ...}]
+            assert len(conversation) == 2, "Direct attack currently assumes single-turn conversation."
+            original_conversations.append(conversation)
+
+            # Prepare tokens and identify prompt/target parts
+            # `token_tensors` is a list like [user_tokens, assistant_tokens]
+            token_tensors = prepare_conversation(tokenizer, conversation)
+
+            flat_tokens = []
+            for turn_tokens in token_tensors:
+                flat_tokens.extend(turn_tokens)
+            # Concatenate all turns for the full input/target context
+            full_token_tensors_list.append(torch.cat(flat_tokens, dim=0))
+
+            # Identify prompt tokens (everything before the target assistant turn)
+            prompt_token_tensors_list.append(torch.cat(flat_tokens[:-1]))
+            target_token_tensors_list.append(flat_tokens[-1])
+
+        B = len(original_conversations)
+
+        # --- 2. Calculate Losses ---
+        t_start_loss = time.time()
+        # We need targets shifted by one position for standard next-token prediction loss
+        shifted_target_tensors_list = [t.roll(-1, 0) for t in full_token_tensors_list]
+
+        # Calculate loss for the full sequences
+        all_losses_per_token = get_losses_batched(
+            model,
+            targets=shifted_target_tensors_list,
+            token_list=full_token_tensors_list,
+            initial_batch_size=B,
+        )
+
+        # Extract average loss *only* over the target tokens for each instance
+        instance_losses = []
+        for i in range(B):
+            full_len = full_token_tensors_list[i].size(0)
+            prompt_len = prompt_token_tensors_list[i].size(0)
+            # Loss corresponds to predicting token i+1 given tokens 0..i
+            # We want loss for predicting target tokens, which start at index `prompt_len`
+            # The relevant loss values are at indices `prompt_len-1` to `full_len-2`
+            # (inclusive start, exclusive end for slicing)
+            target_token_losses = all_losses_per_token[i][prompt_len-1:full_len-1]
+            if target_token_losses.numel() > 0:
+                avg_loss = target_token_losses.mean().item()
+            else:
+                avg_loss = None  # Handle cases with empty targets if necessary
+            instance_losses.append(avg_loss)
+
+        t_end_loss = time.time()
+        loss_time_total = t_end_loss - t_start_loss
+
+        # --- 3. Generate Completions ---
+        t_start_gen = time.time()
         completions = generate_ragged_batched(
             model,
             tokenizer,
-            token_list=[torch.cat([a, b, c, d], dim=0) for a, b, c, d, e in token_lists],
-            max_new_tokens=self.config.max_new_tokens,
-            initial_batch_size=min(256, len(token_lists)),
+            token_list=prompt_token_tensors_list,  # Generate from the prompt tokens
+            max_new_tokens=self.config.generation_config.max_new_tokens,
+            temperature=self.config.generation_config.temperature,
+            top_p=self.config.generation_config.top_p,
+            top_k=self.config.generation_config.top_k,
+            num_return_sequences=self.config.generation_config.num_return_sequences,
+            initial_batch_size=B,
         )
-        for c in completions:
-            result.completions.append([c])
-            result.times.append([time.time() - t0])
+        t_end_gen = time.time()
+        gen_time_total = t_end_gen - t_start_gen
 
-        for chunk in chunks(token_lists, self.config.batch_size):
-            token_list = [torch.cat(tokens, dim=0) for tokens in chunk]
-            targets = [t.roll(-1, 0) for t in token_list]
-            losses = get_batched_losses(model, targets, token_list=token_list)
-            losses = [
-                l[-tl:].mean().item()
-                for l, tl in zip(losses, [e.size(0) for a, b, c, d, e in chunk])
-            ]
-            for l in zip(losses):
-                result.losses.append([l])
-        return result
+        t_end_batch = time.time()
+        total_batch_time = t_end_batch - t_start_batch
+        time_per_instance = total_batch_time / B if B > 0 else 0
+
+        # --- 4. Assemble Results ---
+        for i in range(B):
+            original_prompt = original_conversations[i]
+            model_completions = completions[i]
+            loss = instance_losses[i]
+
+            # Get token lists (convert tensors to lists of ints)
+            model_input_tokens = prompt_token_tensors_list[i].tolist()
+
+            # Create the single step result for this direct "attack"
+            step_result = AttackStepResult(
+                step=0,
+                model_input=original_prompt,
+                model_completions=model_completions,
+                time_taken=time_per_instance,
+                loss=loss,
+                model_input_tokens=model_input_tokens,
+            )
+
+            # Create the result for this single run
+            run_result = SingleAttackRunResult(
+                original_prompt=original_prompt,
+                steps=[step_result],
+                total_time=time_per_instance,  # Total time for this run is the instance time
+            )
+
+            all_results.runs.append(run_result)
+
+        logging.info(f"Direct attack run completed. Total Time: {total_batch_time:.2f}s, "
+                     f"Avg Time/Instance: {time_per_instance:.2f}s, "
+                     f"Generation Time: {gen_time_total:.2f}s, Loss Calc Time: {loss_time_total:.2f}s")
+
+        return all_results

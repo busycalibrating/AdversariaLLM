@@ -13,7 +13,7 @@ from tqdm import trange
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.lm_utils import (generate_ragged_batched, get_disallowed_ids,
-                          prepare_tokens, with_max_batchsize)
+                          with_max_batchsize, prepare_conversation)
 
 from .attack import Attack, AttackResult
 
@@ -22,7 +22,6 @@ from .attack import Attack, AttackResult
 class BEASTConfig:
     name: str = "beast"
     type: str = "discrete"
-    placement: str = "suffix"
     generate_completions: Literal["all", "best", "last"] = "all"
     num_steps: int = 30  # also the suffix length
     seed: int = 0
@@ -69,15 +68,18 @@ class BEASTAttack(Attack):
             self.config.allow_special
         ).to(model.device)
 
-        for prompt_dict, target_string in dataset:
-            pre_tokens, prompt_tokens, attack_tokens, post_tokens, target_tokens = prepare_tokens(
+        for conversation in dataset:
+            assert len(conversation) == 2, "Currently BEAST only supports single-turn conversations"
+            attack_conversation = [
+                {"role": "user", "content": conversation[0]["content"] + self.config.optim_str_init},
+                {"role": "assistant", "content": conversation[1]["content"]}
+            ]
+            pre_tokens, _, prompt_tokens, attack_tokens, post_tokens, target_tokens = prepare_conversation(
                 tokenizer,
-                prompt_dict["content"],
-                target_string,
-                attack=self.config.optim_str_init,
-                placement=self.config.placement,
-            )
-            prompts.append(prompt_dict)
+                conversation,
+                attack_conversation,
+            )[0]
+            prompts.append(conversation[0]["content"])
 
             # Compute KV cache for prefix tokens
             if self.config.use_prefix_cache:
@@ -93,6 +95,7 @@ class BEASTAttack(Attack):
             )[0]
 
             per_sample_attacks = [""]
+            per_sample_times = [time.time() - t0]
             per_sample_losses = [torch.log(torch.tensor(initial_ppl)).item()]
 
             # Initial sampling
@@ -146,24 +149,28 @@ class BEASTAttack(Attack):
                 per_sample_attacks.append(best_suffix)
                 per_sample_losses.append(best_loss)
                 pbar.set_postfix({"loss": best_loss, "attack": best_suffix})
-                times.append(time.time() - t0)
+                per_sample_times.append(time.time() - t0)
 
             attacks.append(per_sample_attacks)
             losses.append(per_sample_losses)
-
+            times.append(per_sample_times)
             # Prepare tokens for generation
-            token_list.extend([
-                torch.cat(
-                    prepare_tokens(
-                        tokenizer,
-                        prompt_dict["content"],
-                        "",
-                        attack=attack,
-                        placement=self.config.placement,
-                    )[:4]
+            token_list_batch = []
+            for attack in per_sample_attacks:
+                attack_conversation = [
+                    {"role": "user", "content": conversation[0]["content"] + attack},
+                    {"role": "assistant", "content": conversation[1]["content"]}
+                ]
+                token_list_batch.append(
+                    torch.cat(
+                        prepare_conversation(
+                            tokenizer,
+                            conversation,
+                            attack_conversation,
+                        )[0][:5]
+                    )
                 )
-                for attack in per_sample_attacks
-            ])
+            token_list.extend(token_list_batch)
 
         # Generate completions in batches
         outputs = generate_ragged_batched(

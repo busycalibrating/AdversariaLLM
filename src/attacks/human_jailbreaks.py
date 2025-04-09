@@ -1,12 +1,15 @@
-from dataclasses import dataclass
-from typing import Literal
+"""Single-file implementation of human-designed jailbreaks from
+https://github.com/centerforaisafety/HarmBench/blob/main/baselines/human_jailbreaks/jailbreaks.py
+"""
+from dataclasses import dataclass, field
+import logging
+import time
 
 import torch
 import transformers
-from tqdm import trange
 
-from src.attacks import Attack, AttackResult
-from src.lm_utils import generate_ragged, get_batched_losses, prepare_tokens
+from src.attacks.attack import Attack, GenerationConfig, AttackResult, AttackStepResult, SingleAttackRunResult
+from src.lm_utils import generate_ragged_batched, get_losses_batched, prepare_conversation
 
 
 @dataclass
@@ -14,11 +17,8 @@ class HumanJailbreaksConfig:
     name: str = "human_jailbreaks"
     type: str = "discrete"
     placement: str = "prompt"
-    generate_completions: Literal["all", "best", "last"] = "all"
-    num_steps: int = 1
     seed: int = 0
-    batch_size: int = 1
-    max_new_tokens: int = 256
+    generation_config: GenerationConfig = field(default_factory=GenerationConfig)
 
 
 class HumanJailbreaksAttack(Attack):
@@ -32,61 +32,146 @@ class HumanJailbreaksAttack(Attack):
         tokenizer: transformers.AutoTokenizer,
         dataset: torch.utils.data.Dataset,
     ) -> AttackResult:
-        result = AttackResult([], [], [], [])
-        for msg, target in dataset:
-            token_list = [
-                prepare_tokens(
-                    tokenizer,
-                    jb.encode("utf-8", "replace")
-                    .decode("utf-8")
-                    .format(msg["content"]),
-                    target,
-                    placement="prompt",
-                )
-                for jb in JAILBREAKS
-            ]
-            completions = []
-            losses = []
-            B = self.config.batch_size
-            for i in trange(0, len(token_list), B):
-                token_list_batch = token_list[i : i + B]
-                token_list_completion = [
-                    torch.cat([a, b, c, d])[-tokenizer.model_max_length:] for a, b, c, d, e in token_list_batch
-                ]
+        """Run the HumanJailbreak attacks on the given dataset.
 
-                completion = generate_ragged(
-                    model,
-                    tokenizer,
-                    token_list=token_list_completion,
-                    max_new_tokens=self.config.max_new_tokens,
-                    use_cache=True,
-                )
-                completions.extend(completion)
-                target_lengths = [e.size(0) for a, b, c, d, e in token_list_batch]
-                assert all(t <= tokenizer.model_max_length for t in target_lengths)
-                inputs = [torch.cat(t)[-tokenizer.model_max_length:] for t in token_list_batch]
-                targets = [inp.roll(-1, 0) for inp in inputs]
+        Parameters:
+        ----------
+            model: The model to attack.
+            tokenizer: The tokenizer to use.
+            dataset: The dataset to attack.
 
-                losses_batch = get_batched_losses(
-                    model,
-                    targets=targets,
-                    token_list=inputs,
-                )
-                losses_batch = [
-                    l[-tl:].mean().item() for l, tl in zip(losses_batch, target_lengths)
-                ]
-                losses.extend(losses_batch)
+        Returns:
+        -------
+            AttackResult: The result of the attack
+        """
+        t_start_batch = time.time()
+        all_results = AttackResult()
 
-            result.attacks.append(
-                [
-                    jb.encode("utf-8", "replace").decode("utf-8").format(msg["content"])
-                    for jb in JAILBREAKS
+        # --- 1. Prepare Inputs ---
+        original_conversations = []
+        attack_conversations = []
+        # Stores list of tensors for each conversation's tokens (prompt+target)
+        full_token_tensors_list_flat = []
+        # Stores tensors representing only the prompt part for generation
+        prompt_token_tensors_list_flat = []
+        # Stores tensors representing the target part for loss calculation
+        target_token_tensors_list_flat = []
+
+        # To make tensor handling easier, we'll do most of the work in a flattened manner
+        # E.g. if there are B conversations, and each has N attempts/steps, we'll work with
+        # B*N token sequences and reassemble the results at the end.
+
+        for conversation in dataset:
+            # Assuming conversation = [{'role': 'user', ...}, {'role': 'assistant', ...}]
+            assert len(conversation) == 2, "Direct attack currently assumes single-turn conversation."
+            original_conversations.append(conversation)
+            for jb_prompt in JAILBREAKS:
+                attack_conversation = [
+                    {"role": "user", "content": jb_prompt.encode("utf-8", "replace").decode("utf-8").format(conversation[0]["content"])},
+                    {"role": "assistant", "content": conversation[1]["content"]}
                 ]
+                attack_conversations.append(attack_conversation)
+                # Prepare tokens and identify prompt/target parts
+                # `token_tensors` is a list like [user_tokens, assistant_tokens]
+                token_tensors = prepare_conversation(tokenizer, attack_conversation)
+
+                flat_tokens = []
+                for turn_tokens in token_tensors:
+                    flat_tokens.extend(turn_tokens)
+                full_token_tensors_list_flat.append(torch.cat(flat_tokens, dim=0))
+
+                # Identify prompt tokens (everything before the target assistant turn)
+                prompt_tokens = torch.cat(flat_tokens[:-1])
+                prompt_token_tensors_list_flat.append(prompt_tokens)
+
+                # Identify target tokens (everything after the target assistant turn)
+                target_tokens = flat_tokens[-1]
+                target_token_tensors_list_flat.append(target_tokens)
+
+        shifted_target_tensors_flat = [t.roll(-1, 0) for t in full_token_tensors_list_flat]
+
+        B = len(original_conversations)
+        N = len(original_conversations[0])
+
+        # --- 2. Calculate Losses ---
+        t_start_loss = time.time()
+
+        # Calculate loss for the full sequences
+        all_losses_per_token_flat = get_losses_batched(
+            model, targets=shifted_target_tensors_flat, token_list=full_token_tensors_list_flat, initial_batch_size=B
+        )  # (B*N, T)
+
+        # Extract average loss *only* over the target tokens for each instance
+        instance_losses = []
+        for i in range(B * N):
+            full_len = full_token_tensors_list_flat[i].size(0)
+            prompt_len = prompt_token_tensors_list_flat[i].size(0)
+            # Loss corresponds to predicting token i+1 given tokens 0..i
+            # We want loss for predicting target tokens, which start at index `prompt_len`
+            # The relevant loss values are at indices `prompt_len-1` to `full_len-2`
+            # (inclusive start, exclusive end for slicing)
+            target_token_losses = all_losses_per_token_flat[i][prompt_len-1:full_len-1]
+            avg_loss = target_token_losses.mean().item()
+            instance_losses.append(avg_loss)
+
+        t_end_loss = time.time()
+        loss_time_total = t_end_loss - t_start_loss
+
+        # --- 3. Generate Completions ---
+        t_start_gen = time.time()
+        completions = generate_ragged_batched(
+            model,
+            tokenizer,
+            token_list=prompt_token_tensors_list_flat,  # Generate from the prompt tokens
+            max_new_tokens=self.config.generation_config.max_new_tokens,
+            temperature=self.config.generation_config.temperature,
+            top_p=self.config.generation_config.top_p,
+            top_k=self.config.generation_config.top_k,
+            num_return_sequences=self.config.generation_config.num_return_sequences,
+            initial_batch_size=min(B*N, 512),
+        )  # (B*N, num_return_sequences, completion_len)
+        t_end_gen = time.time()
+        gen_time_total = t_end_gen - t_start_gen
+
+        t_end_batch = time.time()
+        total_batch_time = t_end_batch - t_start_batch
+        time_per_instance = total_batch_time / B / N
+
+        # --- 4. Assemble Results ---
+        for i in range(B):
+            original_prompt = original_conversations[i]
+            steps = []
+            for j in range(N):
+                attack_prompt = attack_conversations[i*N+j]
+                model_completions = completions[i*N+j]
+                loss = instance_losses[i*N+j]
+                model_input_tokens = prompt_token_tensors_list_flat[i*N+j].tolist()
+
+                # Create the single step result for this direct "attack"
+                step_result = AttackStepResult(
+                    step=j,
+                    model_input=attack_prompt,
+                    model_completions=model_completions,
+                    time_taken=time_per_instance,
+                    loss=loss,
+                    model_input_tokens=model_input_tokens,
+                )
+                steps.append(step_result)
+
+            # Create the result for this single run
+            run_result = SingleAttackRunResult(
+                original_prompt=original_prompt,
+                steps=steps,
+                total_time=time_per_instance,  # Total time for this run is the instance time
             )
-            result.completions.append(completions)
-            result.losses.append(losses)
-            result.prompts.append(msg)
-        return result
+
+            all_results.runs.append(run_result)
+
+        logging.info(f"Direct attack run completed. Total Time: {total_batch_time:.2f}s, "
+                     f"Avg Time/Instance: {time_per_instance:.2f}s, "
+                     f"Generation Time: {gen_time_total:.2f}s, Loss Calc Time: {loss_time_total:.2f}s")
+
+        return all_results
 
 
 # Jailbreaks from harmbench

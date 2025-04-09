@@ -1,9 +1,15 @@
+import datetime
+import time
 import pytest
 import torch
-import time
+import transformers
 from transformers import AutoTokenizer
 from src.lm_utils import prepare_conversation
 
+
+@pytest.fixture(autouse=True)
+def mock_datetime():
+    transformers.utils.chat_template_utils._compile_jinja_template.strftime_now = lambda x: datetime.datetime(2025, 4, 3, 12, 30, 0).strftime(x)
 
 
 @pytest.fixture
@@ -131,7 +137,7 @@ MODEL_GROUND_TRUTH = {
             "target": torch.tensor([306, 29915, 29885, 1781, 29892, 6452, 366, 29991]),
         },
         {
-            "pre": torch.tensor([29871, 2, 1, 518, 25580, 29962]),
+            "pre": torch.tensor([2, 1, 518, 25580, 29962]),
             "attack_prefix": torch.tensor([921, 921, 921, 921, 921]),
             "prompt": torch.tensor([1724, 338, 278, 7483, 310, 3444, 29973]),
             "attack_suffix": torch.tensor([921, 921, 921, 921, 921]),
@@ -177,7 +183,7 @@ MODEL_GROUND_TRUTH = {
     ],
     "google/gemma-2-2b-it": [
         {
-            "pre": torch.tensor([2, 106, 1645, 108]),
+            "pre": torch.tensor([235248, 108, 2, 106, 1645, 108]),
             "attack_prefix": torch.tensor([235297, 1141, 1141, 1141, 1141]),
             "prompt": torch.tensor([4521, 235269, 1368, 708, 692, 235336]),
             "attack_suffix": torch.tensor([235297, 1141, 1141, 1141, 1141]),
@@ -185,7 +191,7 @@ MODEL_GROUND_TRUTH = {
             "target": torch.tensor([235285, 235303, 235262, 1426, 235269, 7593, 692, 235341]),
         },
         {
-            "pre": torch.tensor([107, 108, 106, 1645, 108]),
+            "pre": torch.tensor([235248, 108, 107, 108, 106, 1645, 108]),
             "attack_prefix": torch.tensor([235297, 1141, 1141, 1141, 1141]),
             "prompt": torch.tensor([1841, 603, 573, 6037, 576, 6081, 235336]),
             "attack_suffix": torch.tensor([235297, 1141, 1141, 1141, 1141]),
@@ -563,12 +569,12 @@ def test_prepare_conversation_ground_truth_with_both(model_id, ground_truth, bas
     # Compare each part with ground truth
     for i, (pre, attack_prefix, prompt, attack_suffix, post, target) in enumerate(tokens):
         gt = ground_truth[i]
-        assert torch.equal(pre, gt["pre"]), f"PRE mismatch for {model_id}"
-        assert torch.equal(attack_prefix, gt["attack_prefix"]), f"ATT prefix mismatch for {model_id}"
-        assert torch.equal(prompt, gt["prompt"]), f"PROMPT mismatch for {model_id}"
-        assert torch.equal(attack_suffix, gt["attack_suffix"]), f"ATT suffix mismatch for {model_id}"
-        assert torch.equal(post, gt["post"]), f"POST mismatch for {model_id}"
-        assert torch.equal(target, gt["target"]), f"TARGET mismatch for {model_id}"
+        assert torch.equal(pre, gt["pre"]), f"PRE mismatch for {model_id}, {pre}, {gt['pre']}"
+        assert torch.equal(attack_prefix, gt["attack_prefix"]), f"ATT prefix mismatch for {model_id}, {attack_prefix}, {gt['attack_prefix']}"
+        assert torch.equal(prompt, gt["prompt"]), f"PROMPT mismatch for {model_id}, {prompt}, {gt['prompt']}"
+        assert torch.equal(attack_suffix, gt["attack_suffix"]), f"ATT suffix mismatch for {model_id}, {attack_suffix}, {gt['attack_suffix']}"
+        assert torch.equal(post, gt["post"]), f"POST mismatch for {model_id}, {post}, {gt['post']}"
+        assert torch.equal(target, gt["target"]), f"TARGET mismatch for {model_id}, {target}, {gt['target']}"
 
 
 @pytest.mark.parametrize("model_id,ground_truth", MODEL_GROUND_TRUTH.items())
@@ -581,12 +587,12 @@ def test_prepare_conversation_ground_truth_with_suffix(model_id, ground_truth, b
     # Compare each part with ground truth
     for i, (pre, attack_prefix, prompt, attack_suffix, post, target) in enumerate(tokens):
         gt = ground_truth[i]
-        assert torch.equal(pre, gt["pre"]), f"PRE mismatch for {model_id}"
-        assert torch.equal(attack_prefix, torch.tensor([], dtype=torch.long)), f"ATT prefix mismatch for {model_id}"
-        assert torch.equal(prompt, gt["prompt"]), f"PROMPT mismatch for {model_id}"
-        assert torch.equal(attack_suffix, gt["attack_suffix"]), f"ATT suffix mismatch for {model_id}"
-        assert torch.equal(post, gt["post"]), f"POST mismatch for {model_id}"
-        assert torch.equal(target, gt["target"]), f"TARGET mismatch for {model_id}"
+        assert torch.equal(pre, gt["pre"]), f"PRE mismatch for {model_id}, {pre}, {gt['pre']}"
+        assert torch.equal(attack_prefix, torch.tensor([], dtype=torch.long)), f"ATT prefix mismatch for {model_id}, {attack_prefix}, {torch.tensor([], dtype=torch.long)}"
+        assert torch.equal(prompt, gt["prompt"]), f"PROMPT mismatch for {model_id}, {prompt}, {gt['prompt']}"
+        assert torch.equal(attack_suffix, gt["attack_suffix"]), f"ATT suffix mismatch for {model_id}, {attack_suffix}, {gt['attack_suffix']}"
+        assert torch.equal(post, gt["post"]), f"POST mismatch for {model_id}, {post}, {gt['post']}"
+        assert torch.equal(target, gt["target"]), f"TARGET mismatch for {model_id}, {target}, {gt['target']}"
 
 
 @pytest.mark.parametrize("model_id,ground_truth", MODEL_GROUND_TRUTH.items())
@@ -599,12 +605,12 @@ def test_prepare_conversation_ground_truth_with_prefix(model_id, ground_truth, b
     # Compare each part with ground truth
     for i, (pre, attack_prefix, prompt, attack_suffix, post, target) in enumerate(tokens):
         gt = ground_truth[i]
-        assert torch.equal(pre, gt["pre"]), f"PRE mismatch for {model_id}"
-        assert torch.equal(attack_prefix, gt["attack_prefix"]), f"ATT prefix mismatch for {model_id}"
-        assert torch.equal(prompt, gt["prompt"]), f"PROMPT mismatch for {model_id}"
-        assert torch.equal(attack_suffix, torch.tensor([], dtype=torch.long)), f"ATT suffix mismatch for {model_id}"
-        assert torch.equal(post, gt["post"]), f"POST mismatch for {model_id}"
-        assert torch.equal(target, gt["target"]), f"TARGET mismatch for {model_id}"
+        assert torch.equal(pre, gt["pre"]), f"PRE mismatch for {model_id}, {pre}, {gt['pre']}"
+        assert torch.equal(attack_prefix, gt["attack_prefix"]), f"ATT prefix mismatch for {model_id}, {attack_prefix}, {gt['attack_prefix']}"
+        assert torch.equal(prompt, gt["prompt"]), f"PROMPT mismatch for {model_id}, {prompt}, {gt['prompt']}"
+        assert torch.equal(attack_suffix, torch.tensor([], dtype=torch.long)), f"ATT suffix mismatch for {model_id}, {attack_suffix}, {torch.tensor([], dtype=torch.long)}"
+        assert torch.equal(post, gt["post"]), f"POST mismatch for {model_id}, {post}, {gt['post']}"
+        assert torch.equal(target, gt["target"]), f"TARGET mismatch for {model_id}, {target}, {gt['target']}"
 
 
 @pytest.mark.parametrize("model_id,ground_truth", MODEL_GROUND_TRUTH.items())
@@ -617,18 +623,12 @@ def test_prepare_conversation_ground_truth_with_none(model_id, ground_truth, bas
     # Compare each part with ground truth
     for i, (pre, attack_prefix, prompt, attack_suffix, post, target) in enumerate(tokens):
         gt = ground_truth[i]
-        assert torch.equal(pre, gt["pre"]), f"PRE mismatch for {model_id}"
-        assert torch.equal(attack_prefix, torch.tensor([], dtype=torch.long)), f"ATT prefix mismatch for {model_id}"
-        assert torch.equal(prompt, gt["prompt"]), f"PROMPT mismatch for {model_id}"
-        assert torch.equal(attack_suffix, torch.tensor([], dtype=torch.long)), f"ATT suffix mismatch for {model_id}"
-        assert torch.equal(post, gt["post"]), f"POST mismatch for {model_id}"
-        assert torch.equal(target, gt["target"]), f"TARGET mismatch for {model_id}"
-
-
-@pytest.fixture
-def llama_tokenizer():
-    """Fixture providing the Llama 3.1 8B Instruct tokenizer for performance testing."""
-    return AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
+        assert torch.equal(pre, gt["pre"]), f"PRE mismatch for {model_id}, {pre}, {gt['pre']}"
+        assert torch.equal(attack_prefix, torch.tensor([], dtype=torch.long)), f"ATT prefix mismatch for {model_id}, {attack_prefix}, {torch.tensor([], dtype=torch.long)}"
+        assert torch.equal(prompt, gt["prompt"]), f"PROMPT mismatch for {model_id}, {prompt}, {gt['prompt']}"
+        assert torch.equal(attack_suffix, torch.tensor([], dtype=torch.long)), f"ATT suffix mismatch for {model_id}, {attack_suffix}, {torch.tensor([], dtype=torch.long)}"
+        assert torch.equal(post, gt["post"]), f"POST mismatch for {model_id}, {post}, {gt['post']}"
+        assert torch.equal(target, gt["target"]), f"TARGET mismatch for {model_id}, {target}, {gt['target']}"
 
 
 def generate_test_conversations(n: int, add_spaces: bool = False, add_prefix: bool = True, add_suffix: bool = True) -> list[list[dict[str, str]]]:
@@ -637,8 +637,10 @@ def generate_test_conversations(n: int, add_spaces: bool = False, add_prefix: bo
     conversations_with_attack = []
     import random
     import string
+
     def get_random_string():
         return ''.join(random.choice(string.ascii_letters) for _ in range(random.randint(1, 10)))
+
     for _ in range(n):
         a, b, c, d = get_random_string(), get_random_string(), get_random_string(), get_random_string()
         conv = [
@@ -660,23 +662,24 @@ def generate_test_conversations(n: int, add_spaces: bool = False, add_prefix: bo
     return conversations, conversations_with_attack
 
 
-def test_prepare_conversation_performance(llama_tokenizer):
+def test_prepare_conversation_performance():
     """Test the performance of prepare_conversation function."""
     # Number of conversations to process
     n_conversations = 1000
+    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
 
     # Generate test conversations
     conversations, conversations_with_attack = generate_test_conversations(n_conversations)
 
     # Warm up the tokenizer
     for conv, conv_attack in zip(conversations[:10], conversations_with_attack[:10]):
-        prepare_conversation(llama_tokenizer, conv, conv_attack)
+        prepare_conversation(tokenizer, conv, conv_attack)
 
     # Measure performance
     start_time = time.time()
 
     for conv, conv_attack in zip(conversations, conversations_with_attack):
-        prepare_conversation(llama_tokenizer, conv, conv_attack)
+        prepare_conversation(tokenizer, conv, conv_attack)
 
     end_time = time.time()
     total_time = end_time - start_time

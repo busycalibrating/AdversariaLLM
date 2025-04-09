@@ -7,3 +7,5 @@ outputs_archive
 evaluate/**/*.png
 evaluate/**/*.pdf
 evaluate/**/*.py
+cache
+viz
