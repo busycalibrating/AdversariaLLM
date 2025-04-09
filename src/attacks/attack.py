@@ -1,12 +1,15 @@
 import random
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Literal, Optional, List, Dict
 
 from beartype import beartype
 import numpy as np
 import torch
 import transformers
 from src.dataset import PromptDataset
+
+
+Conversation = List[Dict[str, str]]
 
 
 def set_seed(seed):
@@ -33,8 +36,8 @@ class AttackStepResult:
     """Stores results for a single step of an attack algorithm."""
     step: int  # The step number (e.g., iteration)
 
-    # The model's completion(s) in response to model_input. We use a list to store multiple completions
-    # if we are using distributional evaluation.
+    # The model's completion(s) in response to model_input. We use a list to store
+    # multiple completions in case we are using distributional evaluation.
     model_completions: list[str]
 
     # Judge scores - should be a dict of judge name -> list[p(harmful|completion1), p(harmful|completion2), ...]
@@ -49,7 +52,7 @@ class AttackStepResult:
 
     # Sometimes we cannot provide these: (e.g., for embedding attacks)
     # The full input presented to the model at this step (e.g., original_prompt + optimized_suffix)
-    model_input: Optional[list[dict[str, str]]] = None
+    model_input: Optional[Conversation] = None
     # Actual unrolled input tokens (i.e. including the system prompt, if present)
     model_input_tokens: Optional[list[int]] = None
 
@@ -60,7 +63,7 @@ class AttackStepResult:
 class SingleAttackRunResult:
     """Stores the results of running a single attack on a single dataset instance."""
     # The original multi-turn conversation from the dataset
-    original_prompt: list[dict[str, str]]
+    original_prompt: Conversation
 
     # Results for each step of the attack
     steps: list[AttackStepResult] = field(default_factory=list)

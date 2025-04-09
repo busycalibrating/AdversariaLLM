@@ -11,7 +11,7 @@ from tqdm import tqdm, trange
 from transformers import GenerationConfig as HuggingFaceGenerationConfig
 
 from src.io_utils import free_vram, load_model_and_tokenizer
-from src.lm_utils import get_batched_losses, generate_ragged_batched, prepare_tokens
+from src.lm_utils import get_losses_batched, generate_ragged_batched, prepare_tokens
 
 from .attack import Attack, AttackResult, GenerationConfig
 
@@ -128,7 +128,7 @@ class AmpleGCGAttack(Attack):
             token_list = [torch.cat(t, dim=0) for t in token_list]
             targets = [t.roll(-1, 0) for t in token_list]
 
-            losses = get_batched_losses(
+            losses = get_losses_batched(
                 model,
                 targets=targets,
                 token_list=token_list,

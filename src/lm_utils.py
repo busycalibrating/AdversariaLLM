@@ -12,10 +12,7 @@ from tqdm import tqdm
 from transformers import DynamicCache, PreTrainedTokenizerBase, PreTrainedModel
 
 from src.io_utils import free_vram
-
-
-def generate_batched_completions(*args, **kwargs):
-    raise NotImplementedError("Please migrate to generate_ragged (direct replacement), or generate_ragged_batched (with dynamic batch size adjustment).")
+from src.attacks.attack import Conversation
 
 
 @torch.no_grad()
@@ -599,9 +596,9 @@ class TokenMergeError(Exception):
 
 def prepare_conversation(
     tokenizer: PreTrainedTokenizerBase,
-    conversation: list[dict[str, str]],
-    conversation_opt: list[dict[str, str]] | None = None,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    conversation: Conversation,
+    conversation_opt: Conversation | None = None,
+) -> list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]]:
     """For many attacks, we need to figure out how exactly to tokenize the input.
     Since only some models add a space or various control tokens, we have to figure
     out the exact format. We want to make sure that the first generated token is
@@ -738,7 +735,7 @@ def generate_random_string(k: int = 5) -> str:
     return "".join(random.choices(chars, k=k))
 
 
-def _make_random_chats(n: int, k: int = 5) -> list[list[dict[str, str]]]:
+def _make_random_chats(n: int, k: int = 5) -> list[Conversation]:
     """Generate n random chat conversations with k-length messages.
 
     Returns:
@@ -817,7 +814,7 @@ def _extract_prefix_middle_suffix(vectors: list[torch.Tensor]) -> tuple[torch.Te
     return torch.tensor(prefix), torch.tensor(middle), torch.tensor(suffix)
 
 
-def tokenize_chats(chats: list[list[dict[str, str]]], tokenizer) -> list[torch.Tensor]:
+def tokenize_chats(chats: list[Conversation], tokenizer) -> list[torch.Tensor]:
     templates = tokenizer.apply_chat_template(
         chats, tokenize=False, add_generation_prompt=False
     )
@@ -948,7 +945,7 @@ def get_disallowed_ids(tokenizer: PreTrainedTokenizerBase, allow_non_ascii: bool
 
 def filter_suffix(
     tokenizer: PreTrainedTokenizerBase,
-    clean_conversation: list[dict[str, str]],
+    clean_conversation: Conversation,
     ids: list[list[torch.Tensor | None, torch.Tensor | None]]
 ) -> list[int]:
     """

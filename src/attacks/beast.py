@@ -14,7 +14,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from src.lm_utils import (generate_ragged_batched, get_disallowed_ids,
                           with_max_batchsize, prepare_conversation)
 
-from src.attacks.attack import Attack, AttackResult, GenerationConfig, SingleAttackRunResult, AttackStepResult
+from src.attacks.attack import Attack, AttackResult, GenerationConfig, SingleAttackRunResult, AttackStepResult, Conversation
 
 
 @dataclass
@@ -55,12 +55,11 @@ class BEASTAttack(Attack):
             AttackResult: Holds all data about the generated attacks, losses, prompts,
                 completions, and execution times.
         """
-        t0 = time.time()
-        num_examples = len(dataset)
+        attack_start_time = time.time()
         attacks, losses, times, prompts, token_list = [], [], [], [], []
 
         # Get disallowed token IDs once
-        disallowed_ids = get_disallowed_ids(
+        self.disallowed_ids = get_disallowed_ids(
             tokenizer,
             self.config.allow_non_ascii,
             self.config.allow_special
@@ -68,14 +67,14 @@ class BEASTAttack(Attack):
 
         for conversation in dataset:
             assert len(conversation) == 2, "Currently BEAST only supports single-turn conversations"
-            attack_conversation = [
+            attack: Conversation = [
                 {"role": "user", "content": conversation[0]["content"] + self.config.optim_str_init},
                 {"role": "assistant", "content": conversation[1]["content"]}
             ]
             pre_tokens, _, prompt_tokens, attack_tokens, post_tokens, target_tokens = prepare_conversation(
                 tokenizer,
                 conversation,
-                attack_conversation,
+                attack,
             )[0]
             prompts.append(conversation)
 
@@ -93,7 +92,7 @@ class BEASTAttack(Attack):
             )[0]
 
             per_sample_attacks = [""]
-            per_sample_times = [time.time() - t0]
+            per_sample_times = [time.time() - attack_start_time]
             per_sample_losses = [torch.log(torch.tensor(initial_ppl)).item()]
 
             # Initial sampling
@@ -104,7 +103,6 @@ class BEASTAttack(Attack):
                 prompt_tokens=prompt_tokens,
                 attack_token_list=[attack_tokens],
                 post_tokens=post_tokens,
-                disallowed_ids=disallowed_ids
             )[0]  # shape is (k1,)
             beams: list[torch.LongTensor] = [torch.LongTensor([]) for b in beams]
             for i in (pbar := trange(1, self.config.num_steps)):
@@ -116,7 +114,6 @@ class BEASTAttack(Attack):
                     prompt_tokens,
                     beams,
                     post_tokens,
-                    disallowed_ids=disallowed_ids
                 )  # (k1, k2)
 
                 # Create all candidates
@@ -147,7 +144,7 @@ class BEASTAttack(Attack):
                 per_sample_attacks.append(best_suffix)
                 per_sample_losses.append(best_loss)
                 pbar.set_postfix({"loss": best_loss, "attack": best_suffix})
-                per_sample_times.append(time.time() - t0)
+                per_sample_times.append(time.time() - attack_start_time)
 
             losses.append(per_sample_losses)
             times.append(per_sample_times)
@@ -155,20 +152,14 @@ class BEASTAttack(Attack):
             attack_conversations = []
             token_list_batch = []
             for attack in per_sample_attacks:
-                attack_conversation = [
-                    {"role": "user", "content": conversation[0]["content"] + attack},
+                attack_conv = [
+                    {"role": "user", "content": f"{conversation[0]['content']}{attack}"},
                     {"role": "assistant", "content": conversation[1]["content"]}
                 ]
-                attack_conversations.append(attack_conversation)
-                token_list_batch.append(
-                    torch.cat(
-                        prepare_conversation(
-                            tokenizer,
-                            conversation,
-                            attack_conversation,
-                        )[0][:5]
-                    )
-                )
+                attack_conversations.append(attack_conv)
+
+                tokens = prepare_conversation(tokenizer, conversation, attack_conv)[0][:5]
+                token_list_batch.append(torch.cat(tokens))
             attacks.append(attack_conversations)
             token_list.extend(token_list_batch)
 
@@ -184,6 +175,8 @@ class BEASTAttack(Attack):
             top_k=self.config.generation_config.top_k,
             num_return_sequences=self.config.generation_config.num_return_sequences,
         )  # (B*num_steps, num_return_sequences, T)
+
+        # Aggregate results
         runs = []
         for i in range(len(dataset)):
             step_results = []
@@ -200,7 +193,7 @@ class BEASTAttack(Attack):
             run = SingleAttackRunResult(
                 original_prompt=prompts[i],
                 steps=step_results,
-                total_time=time.time() - t0
+                total_time=time.time() - attack_start_time
             )
             runs.append(run)
 
@@ -299,7 +292,6 @@ class BEASTAttack(Attack):
         prompt_tokens,
         attack_token_list,
         post_tokens,
-        disallowed_ids=None,
     ) -> torch.LongTensor:
         if self.prefix_cache is not None:
             # Use the prefix cache to avoid recomputing the prefix
@@ -325,8 +317,8 @@ class BEASTAttack(Attack):
         logits = model(input_ids=tensor, past_key_values=expanded_prefix_cache).logits[:, -1, :]
 
         # Filter out disallowed tokens
-        if disallowed_ids is not None:
-            logits[:, disallowed_ids] = float('-inf')
+        if self.disallowed_ids is not None:
+            logits[:, self.disallowed_ids] = float('-inf')
 
         probs = torch.softmax(logits / self.config.search_temperature, dim=-1)
         tokens = torch.multinomial(probs, k, replacement=False)

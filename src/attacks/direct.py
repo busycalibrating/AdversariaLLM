@@ -10,7 +10,7 @@ import transformers
 
 from src.attacks import Attack
 # Import the new result classes
-from src.attacks.attack import AttackResult, GenerationConfig, SingleAttackRunResult, AttackStepResult
+from src.attacks.attack import AttackResult, GenerationConfig, SingleAttackRunResult, AttackStepResult, Conversation
 from src.lm_utils import generate_ragged_batched, get_losses_batched, prepare_conversation
 
 
@@ -52,26 +52,19 @@ class DirectAttack(Attack):
         all_results = AttackResult()
 
         # --- 1. Prepare Inputs ---
-        original_conversations = []
-        # Stores list of tensors for each conversation's tokens (prompt+target)
-        full_token_tensors_list = []
-        # Stores tensors representing only the prompt part for generation
-        prompt_token_tensors_list = []
-        # Stores tensors representing the target part for loss calculation
-        target_token_tensors_list = []
+        original_conversations: list[Conversation] = []
+        full_token_tensors_list: list[torch.Tensor] = []
+        prompt_token_tensors_list: list[torch.Tensor] = []
+        target_token_tensors_list: list[torch.Tensor] = []
 
         for conversation in dataset:
             # Assuming conversation = [{'role': 'user', ...}, {'role': 'assistant', ...}]
             assert len(conversation) == 2, "Direct attack currently assumes single-turn conversation."
             original_conversations.append(conversation)
 
-            # Prepare tokens and identify prompt/target parts
-            # `token_tensors` is a list like [user_tokens, assistant_tokens]
             token_tensors = prepare_conversation(tokenizer, conversation)
+            flat_tokens = [t for turn_tokens in token_tensors for t in turn_tokens]
 
-            flat_tokens = []
-            for turn_tokens in token_tensors:
-                flat_tokens.extend(turn_tokens)
             # Concatenate all turns for the full input/target context
             full_token_tensors_list.append(torch.cat(flat_tokens, dim=0))
 
@@ -79,9 +72,8 @@ class DirectAttack(Attack):
             prompt_token_tensors_list.append(torch.cat(flat_tokens[:-1]))
             target_token_tensors_list.append(flat_tokens[-1])
 
-        B = len(original_conversations)
-
         # --- 2. Calculate Losses ---
+        B = len(original_conversations)
         t_start_loss = time.time()
         # We need targets shifted by one position for standard next-token prediction loss
         shifted_target_tensors_list = [t.roll(-1, 0) for t in full_token_tensors_list]
@@ -131,7 +123,7 @@ class DirectAttack(Attack):
 
         t_end_batch = time.time()
         total_batch_time = t_end_batch - t_start_batch
-        time_per_instance = total_batch_time / B if B > 0 else 0
+        time_per_instance = total_batch_time / B
 
         # --- 4. Assemble Results ---
         for i in range(B):
