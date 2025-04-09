@@ -60,14 +60,14 @@ beast:
   name: beast
   type: discrete
   placement: suffix
-  max_new_tokens: ${attacks._default.generation_config.max_new_tokens}
+  generation_config: ${attacks._default.generation_config}
   seed: ${attacks._default.seed}
   num_steps: 40
   optim_str_init: ""
   k1: 15
   k2: 15
-  temperature: 1.0
-  allow_non_ascii: False
+  search_temperature: 1.0
+  allow_non_ascii: True
   allow_special: False
   use_prefix_cache: True
 direct:

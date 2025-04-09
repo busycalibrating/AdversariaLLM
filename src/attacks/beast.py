@@ -4,9 +4,8 @@ Adapted from https://github.com/dreadnode/research/blob/main/notebooks/Mistral%2
 """
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
-from typing import Literal
 
 import torch
 from tqdm import trange
@@ -15,21 +14,21 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from src.lm_utils import (generate_ragged_batched, get_disallowed_ids,
                           with_max_batchsize, prepare_conversation)
 
-from .attack import Attack, AttackResult
+from src.attacks.attack import Attack, AttackResult, GenerationConfig, SingleAttackRunResult, AttackStepResult
 
 
 @dataclass
 class BEASTConfig:
     name: str = "beast"
     type: str = "discrete"
-    generate_completions: Literal["all", "best", "last"] = "all"
+    placement: str = "suffix"
+    generation_config: GenerationConfig = field(default_factory=GenerationConfig)
     num_steps: int = 30  # also the suffix length
     seed: int = 0
     optim_str_init: str = ""
     k1: int = 10
     k2: int = 10
-    temperature: float = 1.0
-    max_new_tokens: int = 256
+    search_temperature: float = 1.0
     allow_non_ascii: bool = False
     allow_special: bool = False
     use_prefix_cache: bool = True
@@ -38,7 +37,7 @@ class BEASTConfig:
 class BEASTAttack(Attack):
     def __init__(self, config: BEASTConfig):
         super().__init__(config)
-        assert self.config.temperature > 0.0, "Temperature must be greater than 0 for BEAST"
+        assert self.config.search_temperature > 0.0, "Temperature must be greater than 0 for BEAST"
         self.prefix_cache = None
 
     @torch.no_grad()
@@ -58,7 +57,6 @@ class BEASTAttack(Attack):
         """
         t0 = time.time()
         num_examples = len(dataset)
-        completions: list[list[str]] = [[] for _ in range(num_examples)]
         attacks, losses, times, prompts, token_list = [], [], [], [], []
 
         # Get disallowed token IDs once
@@ -79,7 +77,7 @@ class BEASTAttack(Attack):
                 conversation,
                 attack_conversation,
             )[0]
-            prompts.append(conversation[0]["content"])
+            prompts.append(conversation)
 
             # Compute KV cache for prefix tokens
             if self.config.use_prefix_cache:
@@ -151,16 +149,17 @@ class BEASTAttack(Attack):
                 pbar.set_postfix({"loss": best_loss, "attack": best_suffix})
                 per_sample_times.append(time.time() - t0)
 
-            attacks.append(per_sample_attacks)
             losses.append(per_sample_losses)
             times.append(per_sample_times)
             # Prepare tokens for generation
+            attack_conversations = []
             token_list_batch = []
             for attack in per_sample_attacks:
                 attack_conversation = [
                     {"role": "user", "content": conversation[0]["content"] + attack},
                     {"role": "assistant", "content": conversation[1]["content"]}
                 ]
+                attack_conversations.append(attack_conversation)
                 token_list_batch.append(
                     torch.cat(
                         prepare_conversation(
@@ -170,6 +169,7 @@ class BEASTAttack(Attack):
                         )[0][:5]
                     )
                 )
+            attacks.append(attack_conversations)
             token_list.extend(token_list_batch)
 
         # Generate completions in batches
@@ -178,21 +178,33 @@ class BEASTAttack(Attack):
             tokenizer,
             token_list=token_list,
             initial_batch_size=512,
-            max_new_tokens=self.config.max_new_tokens,
-        )
+            max_new_tokens=self.config.generation_config.max_new_tokens,
+            temperature=self.config.generation_config.temperature,
+            top_p=self.config.generation_config.top_p,
+            top_k=self.config.generation_config.top_k,
+            num_return_sequences=self.config.generation_config.num_return_sequences,
+        )  # (B*num_steps, num_return_sequences, T)
+        runs = []
+        for i in range(len(dataset)):
+            step_results = []
+            for j in range(self.config.num_steps):
+                step_result = AttackStepResult(
+                    step=j,
+                    model_completions=outputs[i*self.config.num_steps + j],
+                    time_taken=times[i][j],
+                    loss=losses[i][j],
+                    model_input=attacks[i][j],
+                    model_input_tokens=token_list[i*self.config.num_steps + j].tolist()
+                )
+                step_results.append(step_result)
+            run = SingleAttackRunResult(
+                original_prompt=prompts[i],
+                steps=step_results,
+                total_time=time.time() - t0
+            )
+            runs.append(run)
 
-        # Organize outputs into completions
-        attacks_per_sample = len(attacks[0])
-        for i, output in enumerate(outputs):
-            completions[i // attacks_per_sample].append(output)
-
-        return AttackResult(
-            attacks=attacks,
-            losses=losses,
-            prompts=prompts,
-            completions=completions,
-            times=times,
-        )
+        return AttackResult(runs=runs)
 
     def populate_prefix_cache(self, model, pre_tokens, prompt_tokens):
         """Compute KV cache for prefix tokens to avoid recomputing them."""
@@ -316,6 +328,6 @@ class BEASTAttack(Attack):
         if disallowed_ids is not None:
             logits[:, disallowed_ids] = float('-inf')
 
-        probs = torch.softmax(logits / self.config.temperature, dim=-1)
+        probs = torch.softmax(logits / self.config.search_temperature, dim=-1)
         tokens = torch.multinomial(probs, k, replacement=False)
         return tokens.cpu()  # Return as CPU tensor
