@@ -1,15 +1,17 @@
 """Implementation of a one-hot-input space continuous attack. Needs tuning."""
-from dataclasses import dataclass
-from typing import Literal
 import functools
 import time
+from dataclasses import dataclass, field
+
 import torch
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from tqdm import trange
-from src.lm_utils import generate_ragged_batched, prepare_tokens, with_max_batchsize, get_disallowed_ids
 
-from .attack import Attack, AttackResult
+from src.attacks import (Attack, AttackResult, AttackStepResult,
+                         GenerationConfig, SingleAttackRunResult)
+from src.lm_utils import (generate_ragged_batched, get_disallowed_ids,
+                          prepare_conversation, with_max_batchsize)
 
 
 @dataclass
@@ -17,12 +19,11 @@ class RandomSearchConfig:
     name: str = "random_search"
     type: str = "discrete"
     placement: str = "suffix"
-    generate_completions: Literal["all", "best", "last"] = "all"
+    generation_config: GenerationConfig = field(default_factory=GenerationConfig)
     num_steps: int = 100
     seed: int = 0
     batch_size: int = 16
     optim_str_init: str = "x x x x x x x x x x x x x x x x x x x x"
-    max_new_tokens: int = 256
 
 
 class RandomSearchAttack(Attack):
@@ -38,30 +39,45 @@ class RandomSearchAttack(Attack):
     def run(self, model: torch.nn.Module, tokenizer, dataset) -> AttackResult:
         self.disallowed_ids = get_disallowed_ids(tokenizer, allow_non_ascii=False, allow_special=False)
 
-        num_examples = len(dataset)
-
         x: list[torch.Tensor] = []
         attack_masks: list[torch.Tensor] = []
         target_masks: list[torch.Tensor] = []
-        prompts = []
-        for msg, target in dataset:
-            pre_tokens, prompt_tokens, attack_tokens, post_tokens, target_tokens = (
-                prepare_tokens(
-                    tokenizer,
-                    msg['content'],
-                    target,
-                    attack=self.config.optim_str_init,
-                    placement=self.config.placement,
-                )
+        original_conversations = []
+        for conversation in dataset:
+            assert len(conversation) == 2, "Random search attack only supports two-turn conversations"
+            original_conversations.append(conversation)
+
+            if self.config.placement == "suffix":
+                conversation_opt = [
+                    {"role": "user", "content": conversation[0]["content"] + self.config.optim_str_init},
+                    {"role": "assistant", "content": conversation[1]["content"]}
+                ]
+                prep_conv_arg = conversation
+            elif self.config.placement == "prompt":
+                initial_user_content = self.config.optim_str_init if self.config.optim_str_init else ""
+                prep_conv_arg = [
+                    {"role": "user", "content": ""},
+                    {"role": "assistant", "content": conversation[1]["content"]}
+                ]
+                conversation_opt = [
+                    {"role": "user", "content": initial_user_content},
+                    {"role": "assistant", "content": conversation[1]["content"]}
+                ]
+            else:
+                raise ValueError(f"Unknown placement type: {self.config.placement}")
+
+            pre_tokens, attack_prefix_tokens, prompt_tokens, attack_suffix_tokens, post_tokens, target_tokens = (
+                prepare_conversation(tokenizer, prep_conv_arg, conversation_opt)[0]
             )
             tokens = torch.cat(
-                [pre_tokens, prompt_tokens, attack_tokens, post_tokens, target_tokens]
+                [pre_tokens, attack_prefix_tokens, prompt_tokens, attack_suffix_tokens, post_tokens, target_tokens]
             )
             attack_mask = torch.cat(
                 [
                     torch.zeros_like(pre_tokens),
+                    torch.ones_like(attack_prefix_tokens),
                     torch.zeros_like(prompt_tokens),
-                    torch.ones_like(attack_tokens),
+                    torch.ones_like(attack_suffix_tokens),
                     torch.zeros_like(post_tokens),
                     torch.zeros_like(target_tokens),
                 ]
@@ -69,13 +85,13 @@ class RandomSearchAttack(Attack):
             target_mask = torch.cat(
                 [
                     torch.zeros_like(pre_tokens),
+                    torch.zeros_like(attack_prefix_tokens),
                     torch.zeros_like(prompt_tokens),
-                    torch.zeros_like(attack_tokens),
+                    torch.zeros_like(attack_suffix_tokens),
                     torch.zeros_like(post_tokens),
                     torch.ones_like(target_tokens),
                 ]
             ).roll(-1, 0)
-            prompts.append(msg)
             x.append(tokens)
             attack_masks.append(attack_mask)
             target_masks.append(target_mask)
@@ -88,22 +104,12 @@ class RandomSearchAttack(Attack):
         y = x.clone()
         y[:, :-1] = x[:, 1:]
 
-        # Run the attack with dynamic batch size adjustment
-        t0 = time.time()
         attack_fn = functools.partial(self.attack_batch, model, tokenizer)
-        losses, completions, times = with_max_batchsize(attack_fn, x, y, attention_mask, attack_masks, target_masks)
-        print(f"with_max_batchsize time: {time.time() - t0}")
+        runs = with_max_batchsize(attack_fn, original_conversations, x, y, attention_mask, attack_masks, target_masks)
 
-        return AttackResult(
-            attacks=[None] * num_examples,
-            completions=completions,
-            losses=losses,
-            prompts=prompts,
-            times=times,
-        )
+        return AttackResult(runs=runs)
 
     def _get_random_allowed_tokens(self, model, tokenizer, k, happy_set, weights):
-        # Create a mask of allowed token IDs (those not in disallowed_ids)
         allowed_mask = torch.ones(len(tokenizer), dtype=torch.bool, device=model.device)
         allowed_mask[self.disallowed_ids] = False
 
@@ -123,11 +129,11 @@ class RandomSearchAttack(Attack):
         # Return the actual token IDs
         return allowed_indices[random_indices]
 
-    def attack_batch(self, model, tokenizer, x, y, attention_mask, attack_masks, target_masks):
+    def attack_batch(self, model, tokenizer, original_conversations_batch, x, y, attention_mask, attack_masks, target_masks) -> list[SingleAttackRunResult]:
+        t0 = time.time()
         num_examples = x.size(0)
-        losses = [[] for _ in range(num_examples)]
-        completions = [[] for _ in range(num_examples)]
-        times = [[] for _ in range(num_examples)]
+
+        batch_attack_indices = [torch.nonzero(mask, as_tuple=True)[0] for mask in attack_masks]
 
         candidates = x.to(model.device)
         y = y.to(model.device)
@@ -135,77 +141,126 @@ class RandomSearchAttack(Attack):
         attack_masks = attack_masks.to(model.device)
         target_masks = target_masks.to(model.device)
 
-        attack_sequences = []
-        best_sequence = candidates.clone()
-        best_losses = torch.full((candidates.size(0), ), float('inf'), device=candidates.device)
-        happy_set = set()
-        mean_losses = []
-        mean_diffs = []
-        t0 = time.time()
+        all_step_conversations: list[list[list[dict[str, str]]]] = [[] for _ in range(num_examples)]
+        all_step_token_ids: list[list[torch.Tensor]] = [[] for _ in range(num_examples)]
+        losses: list[list[float]] = [[] for _ in range(num_examples)]
+        times: list[list[float]] = [[] for _ in range(num_examples)]
 
-        def mutate_candidates(candidates, weights):
-            for b in range(candidates.size(0)):
-                random_allowed_tokens = self._get_random_allowed_tokens(model, tokenizer, k, happy_set, weights)
-                n = attack_masks[b].sum()
-                attack_indices = torch.multinomial(torch.ones(n), k, replacement=False)
-                attack_positions = torch.nonzero(attack_masks[b], as_tuple=True)[0]
-                positions_to_modify = attack_positions[attack_indices]
-                candidates[b, positions_to_modify] = random_allowed_tokens[:k]
-            return candidates
+        best_sequence = candidates.clone()
+        best_losses = torch.full((candidates.size(0),), float('inf'), device=candidates.device)
+        happy_set: list[set[int]] = [set() for _ in range(num_examples)]
+        mean_losses_history = []
+        mean_diffs_history = []
+
+        def mutate_candidates(current_candidates, current_attack_masks, current_happy_sets, weights_for_sampling):
+            mutated_candidates = current_candidates.clone()
+            effective_k = 1
+
+            attack_positions = torch.nonzero(current_attack_masks, as_tuple=True)[0]
+            n = len(attack_positions)
+
+            attack_indices_to_modify_relative = torch.multinomial(torch.ones(n, device=model.device), effective_k, replacement=False)
+            positions_to_modify_absolute = attack_positions[attack_indices_to_modify_relative]
+
+            random_allowed_tokens = self._get_random_allowed_tokens(model, tokenizer, effective_k, current_happy_sets, weights_for_sampling)
+
+            # Apply mutation to the cloned tensor
+            mutated_candidates[positions_to_modify_absolute] = random_allowed_tokens[:effective_k]
+
+            return mutated_candidates
 
         avg_loss_per_token = torch.zeros(len(tokenizer), device=model.device)
-
         pbar = trange(self.config.num_steps)
-        for _step in pbar:
-            attack_sequences.extend([
-                candidates[b, ~(tm.roll(1, 0).cumsum(0).bool())].clone()
-                for b, tm in enumerate(target_masks)
-            ])
+        for step_num in pbar:
+            t1 = time.time()
+
+            # --- Store conversations and tokens for this step ---
+            current_step_conversations = []
+            current_step_token_ids = []
+            for b in range(candidates.size(0)):
+                current_attack_indices = batch_attack_indices[b]
+                attack_tokens = candidates[b, current_attack_indices]
+                # Decode carefully, handle potential special tokens if needed
+                attack_str = tokenizer.decode(attack_tokens, skip_special_tokens=False)
+
+                original_conv = original_conversations_batch[b]
+                if self.config.placement == "suffix":
+                    user_content = original_conv[0]["content"] + attack_str
+                elif self.config.placement == "prompt":
+                    user_content = attack_str
+                reconstructed_conversation = [
+                    {"role": "user", "content": user_content},
+                    {"role": "assistant", "content": ""}
+                ]
+                step_tokens = candidates[b].clone()
+                current_step_conversations.append(reconstructed_conversation)
+                current_step_token_ids.append(step_tokens)
+                all_step_conversations[b].append(reconstructed_conversation)
+                all_step_token_ids[b].append(step_tokens)
+            # --- End storing ---
+
+            # --- Model Forward and Loss Calculation ---
             logits = model(
                 input_ids=candidates,
                 attention_mask=attention_mask,
             ).logits
-            loss = F.cross_entropy(
+            loss_per_token = F.cross_entropy(
                 logits.view(-1, logits.size(-1)),
                 y.view(-1),
                 reduction="none",
             )
-            loss = loss * target_masks.view(-1)
-            loss = loss.view(candidates.size(0), -1).mean(dim=1)
+            loss_per_token = loss_per_token * target_masks.view(-1)
+            loss_per_example = loss_per_token.view(candidates.size(0), -1)
+            target_lengths = target_masks.sum(dim=1)
+            mean_loss_per_example = torch.where(target_lengths > 0, loss_per_example.sum(dim=1) / target_lengths, torch.zeros_like(target_lengths, dtype=torch.float))
 
-            mean_loss = loss.mean().item()
-            mean_losses.append(mean_loss)
-            if loss < best_losses:
-                happy_set.update(set(candidates[0].tolist()))
-            best_losses = torch.minimum(best_losses, loss)
-            # check for
-            for i, l in enumerate(loss.detach().tolist()):
-                for token in (candidates[i] != best_sequence[i]).nonzero(as_tuple=True)[0]:
-                    avg_loss_per_token[candidates[i, token].item()] = l-best_losses[i]
-            # print({k: torch.mean(torch.tensor(v)).item() for k, v in avg_loss_per_token.items()})
+            # --- Update Best Sequence and Stats ---
+            current_mean_loss = mean_loss_per_example.mean().item()
+            mean_losses_history.append(current_mean_loss)
 
-            best_sequence = torch.where(loss == best_losses, candidates.detach().clone(), best_sequence)
+            for i in range(num_examples):
+                if mean_loss_per_example[i] < best_losses[i]:
+                    best_losses[i] = mean_loss_per_example[i]
+                    best_sequence[i] = candidates[i].clone()
+                    happy_set[i].update(set(candidates[i, batch_attack_indices[i]].tolist()))
+                losses[i].append(mean_loss_per_example[i].item())
 
-            k = 1
-            candidates = mutate_candidates(best_sequence.clone(), avg_loss_per_token)
+            for i, current_loss in enumerate(mean_loss_per_example.detach()):
+                current_attack_indices_i = batch_attack_indices[i]
+                for token_pos in current_attack_indices_i:
+                    token_id = candidates[i, token_pos].item()
+                    avg_loss_per_token[token_id] = current_loss - best_losses[i]
 
-            # Record diffs and losses
-            diffs = (best_sequence != candidates).any(dim=-1).float()
-            mean_diffs.append(diffs.mean().item())
-            for j, l in enumerate(loss.detach().tolist()):
-                losses[j].append(l)
-                times[j].append(time.time() - t0)
+            step_time = time.time() - t1
+            for i in range(num_examples):
+                times[i].append(step_time)
 
-            # Update progress bar with current loss
-            pbar.set_postfix({"loss": f"{mean_loss:.4f}", "k": k, "best_loss": f"{best_losses.mean().item():.4f}"})
-            # Plot losses
-            if (_step+1) % 100 == 0:
+            # --- Generate Next Candidates ---
+            # Mutate the overall best sequence found so far (across all examples)
+            next_candidates = best_sequence.clone()
+            for i in range(num_examples):
+                next_candidates[i] = mutate_candidates(best_sequence[i], attack_masks[i], happy_set[i], avg_loss_per_token)
+
+            # Record differences between the previous best sequence and the new candidates
+            diffs_list = []
+            for b in range(best_sequence.size(0)):
+                indices = batch_attack_indices[b]
+                diffs_list.append((best_sequence[b, indices] != next_candidates[b, indices]).any().float())
+            diffs = torch.stack(diffs_list) if diffs_list else torch.tensor(0.0, device=best_sequence.device)
+            mean_diffs_history.append(diffs.mean().item())
+
+            # Update candidates for the next iteration
+            candidates = next_candidates
+
+            # --- Logging and Plotting ---
+            pbar.set_postfix({"loss": f"{current_mean_loss:.4f}", "best_loss": f"{best_losses.mean().item():.4f}"})
+            if (step_num+1) % 100 == 0:
                 import matplotlib.pyplot as plt
                 plt.figure(figsize=(12, 8))
 
                 # Plot losses over time
                 plt.subplot(3, 1, 1)
-                plt.scatter(range(len(mean_losses)), mean_losses, s=1, alpha=0.2, label='One-Hot Loss')
+                plt.scatter(range(len(mean_losses_history)), mean_losses_history, s=1, alpha=0.2, label='One-Hot Loss')
                 plt.xlabel('Step')
                 plt.ylabel('Loss')
                 plt.title('Loss vs. Training Step')
@@ -215,9 +270,8 @@ class RandomSearchAttack(Attack):
                 plt.subplot(3, 1, 3)
                 ax1 = plt.gca()
                 ax2 = ax1.twinx()
-                # Plot edit distance with linear scale
-                ax2.plot(mean_diffs, 'r-', label='Edit Distance [in one-hot space]')
-                ax2.set_ylabel('Edit Distance (linear scale)', color='r')
+                ax2.plot(mean_diffs_history, 'r-', label='Edit Distance [in one-hot space]')
+                ax2.set_ylabel('Fraction Changed', color='r')
                 ax2.tick_params(axis='y', labelcolor='r')
 
                 ax1.set_xlabel('Step')
@@ -230,18 +284,44 @@ class RandomSearchAttack(Attack):
                 plt.savefig('loss_analysis.pdf')
                 plt.close()
 
-        # Flatten attack sequences for output generation
-        # Each attack sequence corresponds to a different random search iteration
-        # We need to flatten them to generate completions for all iterations
+        # --- Generation Step ---
+        # Flatten the per-example, per-step token lists for batch generation
+        flat_token_list = [token_tensor for example_tokens in all_step_token_ids for token_tensor in example_tokens]
+        outputs = []
+        if flat_token_list:
+            outputs = generate_ragged_batched(
+                model, tokenizer, token_list=flat_token_list,
+                initial_batch_size=self.batch_size,
+                max_new_tokens=self.config.generation_config.max_new_tokens,
+                temperature=self.config.generation_config.temperature,
+                top_p=self.config.generation_config.top_p, top_k=self.config.generation_config.top_k,
+                num_return_sequences=self.config.generation_config.num_return_sequences
+            )
+        else:
+            print("Warning: No valid token sequences to generate from.")
 
-        outputs = generate_ragged_batched(
-            model,
-            tokenizer,
-            token_list=attack_sequences,
-            initial_batch_size=512,
-            max_new_tokens=self.config.max_new_tokens,
-        )
+        # --- Collate Results ---
+        runs = []
+        num_steps = self.config.num_steps
 
-        for i, output in enumerate(outputs):
-            completions[i // len(attack_sequences)].append(output)
-        return losses, completions, times
+        for i in range(num_examples):
+            steps_for_prompt = []
+            for step in range(num_steps):
+                step_outputs = outputs[i*num_steps + step]
+                step_result = AttackStepResult(
+                    step=step,
+                    model_completions=step_outputs,
+                    time_taken=times[i][step],
+                    loss=losses[i][step],
+                    model_input=all_step_conversations[i][step],
+                    model_input_tokens=all_step_token_ids[i][step].tolist(),
+                )
+                steps_for_prompt.append(step_result)
+
+            run = SingleAttackRunResult(
+                original_prompt=original_conversations_batch[i],
+                steps=steps_for_prompt,
+                total_time=(time.time() - t0) / num_examples
+            )
+            runs.append(run)
+        return runs
