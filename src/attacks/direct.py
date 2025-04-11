@@ -10,8 +10,9 @@ import transformers
 
 from src.attacks import Attack
 # Import the new result classes
-from src.attacks.attack import AttackResult, GenerationConfig, SingleAttackRunResult, AttackStepResult, Conversation
+from src.attacks.attack import AttackResult, GenerationConfig, SingleAttackRunResult, AttackStepResult
 from src.lm_utils import generate_ragged_batched, get_losses_batched, prepare_conversation
+from src.types import Conversation
 
 
 @dataclass

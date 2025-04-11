@@ -34,7 +34,7 @@ from src.lm_utils import (filter_suffix, generate_ragged_batched,
                           with_max_batchsize)
 
 from src.dataset import PromptDataset
-from .attack import Attack, AttackResult, GenerationConfig
+from .attack import Attack, AttackResult, GenerationConfig, SingleAttackRunResult, AttackStepResult
 
 
 @dataclass
@@ -45,7 +45,6 @@ class GCGConfig:
     generation_config: GenerationConfig = field(default_factory=GenerationConfig)
     num_steps: int = 250
     seed: int = 0
-    batch_size: int = 512
     optim_str_init: str = "x x x x x x x x x x x x x x x x x x x x"
     search_width: int = 512
     topk: int = 256
@@ -61,7 +60,6 @@ class GCGConfig:
     filter_ids: bool = True
     verbosity: str = "WARNING"
     token_selection: str = "default"
-    max_new_tokens: int = 256
     grow_target: bool = False
 
 
@@ -141,11 +139,7 @@ class GCGAttack(Attack):
 
     def run(self, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, dataset: PromptDataset) -> AttackResult:
         not_allowed_ids = get_disallowed_ids(tokenizer, self.config.allow_non_ascii, self.config.allow_special).to(model.device)
-        attacks = []
-        losses = []
-        prompts = []
-        completions = []
-        times = []
+        runs = []
         for conversation in dataset:
             t0 = time.time()
             attack_conversation = [
@@ -191,8 +185,8 @@ class GCGAttack(Attack):
             optim_ids = buffer.get_best_ids()
             token_selection = SubstitutionSelectionStrategy(self.config.token_selection, self.config, self.prefix_cache, self.pre_prompt_embeds, self.post_embeds, self.target_embeds, self.target_ids)
 
-            batch_losses = []
-            batch_times = []
+            losses = []
+            times = []
             optim_strings = []
             self.stop_flag = False
             current_loss = buffer.get_lowest_loss()
@@ -224,15 +218,15 @@ class GCGAttack(Attack):
                         sampled_ids_pos = sampled_ids_pos[idx]
 
                     compute_loss_fn = partial(self.compute_candidates_loss, model)
-                    loss, acc = with_max_batchsize(compute_loss_fn, sampled_ids, initial_batch_size=self.config.batch_size)
+                    loss, acc = with_max_batchsize(compute_loss_fn, sampled_ids)
 
                     current_loss = loss.min().item()
                     optim_ids = sampled_ids[loss.argmin()].unsqueeze(0)
                     if self.config.grow_target and acc[loss.argmin()]:
                         self.target_length += 1
                     # Update the buffer based on the loss
-                    batch_losses.append(current_loss)
-                    batch_times.append(time.time() - t0)
+                    losses.append(current_loss)
+                    times.append(time.time() - t0)
                     if buffer.size == 0 or current_loss < buffer.get_highest_loss():
                         buffer.add(current_loss, optim_ids)
 
@@ -245,41 +239,45 @@ class GCGAttack(Attack):
                     self.logger.info("Early stopping due to finding a perfect match.")
                     break
 
-            # Generate completions
-            match self.config.generation_config.generate_completions:
-                case "all":
-                    batch_attacks = optim_strings
-                case "best":
-                    batch_attacks = [optim_strings[batch_losses.index(min(batch_losses))]]
-                case "last":
-                    batch_attacks = [optim_strings[-1]]
-                case _:
-                    raise ValueError(f"Unknown value for generate_completions: {self.config.generation_config.generate_completions}")
-
             token_list = []
-            for attack in batch_attacks:
+            attack_conversations = []
+            for attack in optim_strings:
                 attack_conversation = [
                     {"role": "user", "content": conversation[0]["content"] + attack},
-                    {"role": "assistant", "content": conversation[1]["content"]},
+                    {"role": "assistant", "content": ""},
                 ]
                 tokens = prepare_conversation(tokenizer, conversation, attack_conversation)[0]
                 token_list.append(torch.cat(tokens[:5]))
+                attack_conversations.append(attack_conversation)
             batch_completions = generate_ragged_batched(
                 model,
                 tokenizer,
                 token_list=token_list,
-                initial_batch_size=self.config.batch_size,
                 max_new_tokens=self.config.generation_config.max_new_tokens,
                 temperature=self.config.generation_config.temperature,
                 top_p=self.config.generation_config.top_p,
                 top_k=self.config.generation_config.top_k,
+                num_return_sequences=self.config.generation_config.num_return_sequences,
+            )  # (N_steps, N_return_sequences, T)
+            steps = []
+            for i in range(len(optim_strings)):
+                step = AttackStepResult(
+                    step=i,
+                    model_completions=batch_completions[i],
+                    time_taken=(time.time() - t0) / len(optim_strings),
+                    loss=losses[i],
+                    model_input=attack_conversations[i],
+                    model_input_tokens=token_list[i].tolist(),
+                )
+                steps.append(step)
+
+            run = SingleAttackRunResult(
+                original_prompt=conversation,
+                steps=steps,
+                total_time=time.time() - t0,
             )
-            losses.append(batch_losses)
-            attacks.append(batch_attacks)
-            prompts.append(conversation)
-            completions.append(batch_completions)
-            times.append(batch_times)
-        return AttackResult(attacks, losses, prompts, completions, times)
+            runs.append(run)
+        return AttackResult(runs=runs)
 
     def init_buffer(self, model, init_buffer_ids):
         config = self.config
@@ -290,7 +288,7 @@ class GCGAttack(Attack):
 
         # Compute the loss on the initial buffer entries
         compute_loss_fn = partial(self.compute_candidates_loss, model)
-        init_buffer_losses, _ = with_max_batchsize(compute_loss_fn, init_buffer_ids, initial_batch_size=self.config.batch_size)
+        init_buffer_losses, _ = with_max_batchsize(compute_loss_fn, init_buffer_ids)
 
         # Populate the buffer
         for i in range(true_buffer_size):

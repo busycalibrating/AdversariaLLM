@@ -8,6 +8,7 @@ import jailbreakbench as jbb
 import pandas as pd
 import torch
 from datasets import load_dataset
+from src.types import Conversation
 
 
 class PromptDataset(torch.utils.data.Dataset):
@@ -31,7 +32,7 @@ class PromptDataset(torch.utils.data.Dataset):
     def __len__(self):
         raise NotImplementedError
 
-    def __getitem__(self, idx: int) -> list[dict[str, str]]:
+    def __getitem__(self, idx: int) -> Conversation:
         raise NotImplementedError
 
 
@@ -79,7 +80,7 @@ class AdvBehaviorsDataset(PromptDataset):
     def __len__(self):
         return len(self.messages)
 
-    def __getitem__(self, idx: int) -> list[dict[str, str]]:
+    def __getitem__(self, idx: int) -> Conversation:
         msg = self.messages.iloc[idx]
         target = self.targets.iloc[idx]
         if isinstance(msg["ContextString"], str):
@@ -125,7 +126,7 @@ class RefusalDirectionDataDataset(PromptDataset):
     def __len__(self):
         return len(self.messages)
 
-    def __getitem__(self, idx: int) -> list[dict[str, str]]:
+    def __getitem__(self, idx: int) -> Conversation:
         conversation = [
             {"role": "user", "content": self.messages[idx]},
         ]
@@ -159,7 +160,7 @@ class JBBBehaviorsDataset(PromptDataset):
     def __len__(self):
         return len(self.messages)
 
-    def __getitem__(self, idx: int) -> list[dict[str, str]]:
+    def __getitem__(self, idx: int) -> Conversation:
         msg = self.messages.iloc[idx]
         target = self.targets.iloc[idx]
         conversation = [
@@ -213,7 +214,7 @@ class StrongRejectDataset(PromptDataset):
     def __len__(self):
         return len(self.messages)
 
-    def __getitem__(self, idx: int) -> list[dict[str, str]]:
+    def __getitem__(self, idx: int) -> Conversation:
         msg = self.messages.iloc[idx]
         conversation = [
             {"role": "user", "content": msg["forbidden_prompt"]},
@@ -249,7 +250,7 @@ class ORBenchDataset(PromptDataset):
     def __len__(self):
         return len(self.messages)
 
-    def __getitem__(self, idx: int) -> tuple[dict[str, str], str]:
+    def __getitem__(self, idx: int) -> Conversation:
         msg = self.messages[idx]
         conversation = [
             {"role": "user", "content": msg},
@@ -284,7 +285,7 @@ class XSTestDataset(PromptDataset):
     def __len__(self):
         return len(self.messages)
 
-    def __getitem__(self, idx: int) -> tuple[dict[str], str]:
+    def __getitem__(self, idx: int) -> Conversation:
         msg = self.messages[idx]
         conversation = [
             {"role": "user", "content": msg},
@@ -312,7 +313,7 @@ class AlpacaDataset(PromptDataset):
     def __len__(self):
         return len(self.messages)
 
-    def __getitem__(self, idx: int) -> tuple[dict[str], str]:
+    def __getitem__(self, idx: int) -> Conversation:
         msg = self.messages[idx]
         conversation = [
             {"role": "user", "content": msg},

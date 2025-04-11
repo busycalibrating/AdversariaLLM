@@ -25,7 +25,7 @@ def generate_ragged_batched(
     use_cache: bool = True,
     verbose: bool = False,
     **kwargs,
-) -> list[str]:
+) -> list[list[str]]:
     """
     Generate completions for input_list, which can be either embeddings or tokens.
     Dynamically adjust batch size if an OOM error occurs.
@@ -164,7 +164,7 @@ def generate_ragged(
     top_p: float = 1.0,
     top_k: int = 0,
     num_return_sequences: int = 1,
-) -> list[str] | torch.Tensor:
+) -> list[list[str]] | torch.Tensor:
     """
     Generate completions for multiple prompts in a single batch.
     No KV-cache for left-padding yet.

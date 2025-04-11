@@ -1,11 +1,13 @@
 """Single-file implementation of the PAIR attack (https://jailbreaking-llms.github.io/).
+
+Due to memory limits, we do not use a judge model and just return a score of 1 for all completions.
 """
 
 import ast
 import gc
 import logging
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Optional
 
 import time
 import torch
@@ -13,8 +15,9 @@ import transformers
 from tqdm import trange
 
 from src.io_utils import load_model_and_tokenizer
-
-from .attack import Attack, AttackResult
+from src.lm_utils import prepare_conversation, generate_ragged_batched
+from .attack import Attack, AttackResult, SingleAttackRunResult, AttackStepResult, GenerationConfig
+from src.types import Conversation
 
 
 @dataclass
@@ -51,7 +54,7 @@ class PairConfig:
     name: str = "pair"
     type: str = "discrete"
     placement: str = "multi-turn"
-    generate_completions: Literal["all", "best", "last"] = "all"
+    generation_config: GenerationConfig = field(default_factory=GenerationConfig)
     num_streams: int = 1
     keep_last_num: int = 3
     seed: int = 0
@@ -71,24 +74,16 @@ class PAIRAttack(Attack):
         tokenizer: transformers.AutoTokenizer,
         dataset: torch.utils.data.Dataset,
     ) -> AttackResult:
-        results = AttackResult([], [], [], [], [])
-
-        for msg, target in dataset:
+        runs = []
+        for conversation in dataset:
             # prepare tokens
-            attacks, completions, times = self.attack_single_prompt(
-                model, tokenizer, msg["content"], target
+            run = self.attack_single_prompt(
+                model, tokenizer, conversation
             )
-            results.prompts.append(msg)
-            results.attacks.append(attacks)
-            results.completions.append(completions)
-            results.times.append(times)
-            results.losses.append([None] * len(attacks))
-        return results
+            runs.append(run)
+        return AttackResult(runs=runs)
 
-    def attack_single_prompt(self, model, tokenizer, prompt, target):
-        attacks = []
-        completions = []
-        times = []
+    def attack_single_prompt(self, model, tokenizer, conversation: Conversation) -> SingleAttackRunResult:
         # Initialize models
         target_model = HuggingFace(model, tokenizer)
         # Can share underlying model and save VRAM if attack & target model are the same
@@ -107,17 +102,23 @@ class PAIRAttack(Attack):
         # judgeLM = load_judge(args)
 
         # Initialize conversations
-        init_msg = INIT_MSG.format(prompt=prompt, target=target)
+        assert len(conversation) == 2, "PAIR attack currently assumes single-turn prompt conversation."
+        init_msg = INIT_MSG.format(prompt=conversation[0]["content"], target=conversation[1]["content"])
         processed_response_list = [init_msg for _ in range(self.config.num_streams)]
 
-        system_prompt = ATTACKER_SYSTEM_PROMPT.format(prompt=prompt, target=target)
+        system_prompt = ATTACKER_SYSTEM_PROMPT.format(prompt=conversation[0]["content"], target=conversation[1]["content"])
         convs_list = [
             [{"role": "system", "content": system_prompt}]
             for _ in range(self.config.num_streams)
         ]
 
+        attacks: list[Conversation] = []
+        completions: list[list[str]] = []
+        times = []
+        token_list: list[list[int]] = []
         # Begin PAIR
         for _ in trange(self.config.num_steps):
+            t1 = time.time()
             # Get adversarial prompts and improvement
             extracted_attack_list = attack_model.get_attack(
                 convs_list, processed_response_list
@@ -128,14 +129,14 @@ class PAIRAttack(Attack):
             logging.info("Finished getting adversarial prompts.")
 
             # Extract prompts and improvements
-            adv_prompt_list = [attack["prompt"] for attack in extracted_attack_list]
+            adv_prompt_list: list[Conversation] = [[{"role": "user", "content": attack["prompt"]}, {"role": "assistant", "content": ""}] for attack in extracted_attack_list]
             attacks.extend(adv_prompt_list)
-            improv_list = [attack["improvement"] for attack in extracted_attack_list]
 
             # Get target responses
-            times.append(time.time() - t0)
-            target_response_list = target_model.get_response(adv_prompt_list)
-            completions.extend(target_response_list)
+            times.append(time.time() - t1)
+            target_response_list, model_input_tokens = target_model.get_response(adv_prompt_list)
+            token_list.extend(model_input_tokens)
+            completions.append(target_response_list)
             logging.info("Finished getting target responses.")
 
             # Get judge scores
@@ -143,7 +144,7 @@ class PAIRAttack(Attack):
             # TODO: early stopping with judge model
             # judgeLM.score(adv_prompt_list, target_response_list)
             processed_response_list = [
-                process_target_response(target_response, score, prompt)
+                process_target_response(target_response, score, conversation[0]["content"])
                 for target_response, score in zip(target_response_list, judge_scores)
             ]
             # TODO: early stopping with judge model
@@ -151,7 +152,36 @@ class PAIRAttack(Attack):
             # if any([score == 10 for score in judge_scores]):
             #     logging.info("Found a jailbreak. Exiting.")
             #     break
-        return attacks, completions, times
+        if self.config.generation_config.num_return_sequences > 1:
+            additional_completions = generate_ragged_batched(
+                model=target_model.model.model,
+                tokenizer=tokenizer,
+                token_list=token_list,
+                max_new_tokens=self.config.generation_config.max_new_tokens,
+                temperature=self.config.generation_config.temperature,
+                top_p=self.config.generation_config.top_p,
+                top_k=self.config.generation_config.top_k,
+                num_return_sequences=self.config.generation_config.num_return_sequences-1,
+            )
+            for j, new_completions in enumerate(additional_completions):
+                completions[j].extend(new_completions)
+        steps = []
+        for i in range(self.config.num_steps):
+            step = AttackStepResult(
+                step=i,
+                model_completions=completions[i],
+                time_taken=time.time() - t0,
+                loss=None,
+                model_input=attacks[i],
+                model_input_tokens=token_list[i].tolist(),
+            )
+            steps.append(step)
+        run = SingleAttackRunResult(
+            original_prompt=conversation,
+            steps=steps,
+            total_time=time.time() - t0
+        )
+        return run
 
 
 def fix_llama2_tokens(inputs):
@@ -243,13 +273,13 @@ class HuggingFace:
 
             # Batch generation
             batch_output_ids = self.model.generate(
-            **batch_inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=temperature > 0,
-            eos_token_id=self.eos_token_ids,
-            temperature=temperature if temperature > 0 else 1,
-            top_p=top_p if temperature > 0 else 1,
-            pad_token_id=self.tokenizer.eos_token_id,
+                **batch_inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=temperature > 0,
+                eos_token_id=self.eos_token_ids,
+                temperature=temperature if temperature > 0 else 1,
+                top_p=top_p if temperature > 0 else 1,
+                pad_token_id=self.tokenizer.eos_token_id,
             )
             # If the model is not an encoder-decoder type, slice off the input tokens
             if not self.model.config.is_encoder_decoder:
@@ -404,29 +434,21 @@ class TargetLM:
         self.max_new_tokens = cfg.max_new_tokens
         self.top_p = cfg.top_p
 
-    def get_response(self, prompts_list):
-        tokenizer = self.tokenizer
-        batchsize = len(prompts_list)
-        convs_list = [[] for _ in range(batchsize)]
-        full_prompts = []
-        for conv, prompt in zip(convs_list, prompts_list):
-            conv.append({"role": "user", "content": prompt})
-            full_prompt = self.tokenizer.apply_chat_template(
-                conv, add_generation_prompt=True, tokenize=False
-            )
-            # Remove BOS token in batch
-            if tokenizer.bos_token:
-                full_prompt = full_prompt.removeprefix(tokenizer.bos_token)
+    def get_response(self, conversations: list[Conversation]) -> tuple[list[str], list[list[int]]]:
+        token_list = []
+        for conversation in conversations:
+            token_list.append(torch.cat(prepare_conversation(self.tokenizer, conversation)[0][:5]))
 
-            full_prompts.append(full_prompt)
-
-        outputs_list = self.model.batched_generate(
-            full_prompts,
+        outputs_list = generate_ragged_batched(
+            model=self.model.model,
+            tokenizer=self.tokenizer,
+            token_list=token_list,
             max_new_tokens=self.max_new_tokens,
             temperature=self.temperature,
             top_p=self.top_p,
         )
-        return outputs_list
+        outputs_list = [o[0] for o in outputs_list]  # only care about a single completion
+        return outputs_list, token_list
 
 
 def process_target_response(target_response, score, goal):

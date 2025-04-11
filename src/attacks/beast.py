@@ -14,7 +14,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from src.lm_utils import (generate_ragged_batched, get_disallowed_ids,
                           with_max_batchsize, prepare_conversation)
 
-from src.attacks.attack import Attack, AttackResult, GenerationConfig, SingleAttackRunResult, AttackStepResult, Conversation
+from src.attacks.attack import Attack, AttackResult, GenerationConfig, SingleAttackRunResult, AttackStepResult
+from src.types import Conversation
 
 
 @dataclass

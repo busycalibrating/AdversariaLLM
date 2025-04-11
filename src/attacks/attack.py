@@ -1,23 +1,11 @@
-import random
 from dataclasses import dataclass, field
-from typing import Literal, Optional, List, Dict
+from beartype.typing import Literal, Optional
 
 from beartype import beartype
-import numpy as np
-import torch
 import transformers
 from src.dataset import PromptDataset
+from src.types import Conversation
 
-
-Conversation = List[Dict[str, str]]
-
-
-def set_seed(seed):
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
 
 
 @dataclass
@@ -57,11 +45,10 @@ class AttackStepResult:
     model_input_tokens: Optional[list[int]] = None
 
 
-
 @beartype
 @dataclass
 class SingleAttackRunResult:
-    """Stores the results of running a single attack on a single dataset instance."""
+    """Stores the results of running a single attack on a single conversation."""
     # The original multi-turn conversation from the dataset
     original_prompt: Conversation
 
@@ -82,17 +69,11 @@ class AttackResult:
     """
     runs: list[SingleAttackRunResult] = field(default_factory=list)
 
-    # --- Optional metadata about the overall run ---
-    # attack_name: Optional[str] = None
-    # model_name: Optional[str] = None
-    # dataset_name: Optional[str] = None
-    # config: Optional[Any] = None # Store the attack config used?
-
 
 class Attack:
     def __init__(self, config):
         self.config = config
-        set_seed(config.seed)
+        transformers.set_seed(config.seed)
 
     @classmethod
     def from_name(cls, name):

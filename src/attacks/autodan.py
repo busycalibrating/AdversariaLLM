@@ -12,7 +12,7 @@ from accelerate.utils import find_executable_batch_size
 from tqdm import trange
 
 from src.io_utils import load_model_and_tokenizer
-from src.lm_utils import get_losses_batched, generate_ragged_batched, prepare_tokens, prepare_conversation, with_max_batchsize
+from src.lm_utils import get_losses_batched, generate_ragged_batched, prepare_conversation
 
 from src.attacks.attack import Attack, AttackResult, GenerationConfig, AttackStepResult, SingleAttackRunResult
 
