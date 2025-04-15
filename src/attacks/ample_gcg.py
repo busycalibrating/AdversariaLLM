@@ -2,18 +2,17 @@
 
 import time
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Optional
 
 import torch
 import torch.nn as nn
-from accelerate.utils import find_executable_batch_size
-from tqdm import trange
-from transformers import GenerationConfig
+from tqdm import tqdm, trange
+from transformers import GenerationConfig as HuggingFaceGenerationConfig
 
 from src.io_utils import free_vram, load_model_and_tokenizer
-from src.lm_utils import get_batched_losses, generate_ragged_batched, prepare_tokens
+from src.lm_utils import get_losses_batched, generate_ragged_batched, prepare_conversation
 
-from .attack import Attack, AttackResult
+from .attack import Attack, AttackResult, GenerationConfig, AttackStepResult, SingleAttackRunResult
 
 
 @dataclass
@@ -25,26 +24,21 @@ class PrompterLMConfig:
     developer_name: str
     batch_size: int
     dtype: str
-    attn_implmentation: Optional[str]
+    attn_implementation: Optional[str]
     trust_remote_code: bool
     compile: bool
     generation_config: dict
 
-@dataclass
-class TargetLMConfig:
-    batch_size: int
-    max_new_tokens: int
 
 @dataclass
 class AmpleGCGConfig:
     name: str = "ample_gcg"
     type: str = "discrete"
     placement: str = "suffix"
-    generate_completions: Literal["all", "best", "last"] = "all"
+    generation_config: GenerationConfig = field(default_factory=GenerationConfig)
     seed: int = 0
     num_steps: int = 200
     prompter_lm: PrompterLMConfig = field(default_factory=PrompterLMConfig)
-    target_lm: TargetLMConfig = field(default_factory=TargetLMConfig)
 
 
 class AmpleGCGAttack(Attack):
@@ -53,40 +47,58 @@ class AmpleGCGAttack(Attack):
 
     @torch.no_grad
     def run(self, model: torch.nn.Module, tokenizer, dataset) -> AttackResult:
-        results = AttackResult([], [], [], [], [])
-        for msg, target in dataset:
+        runs = []
+        for conversation in tqdm(dataset):
+            assert len(conversation) == 2, "Current AmpleGCG only supports single-turn conversations"
+            msg = conversation[0]["content"]
+            target = conversation[1]["content"]
             # Temporarily move target model to cpu
             device = model.device
             model.cpu()
             free_vram()
             t0 = time.time()
-            attacks = self.get_attack_prompts(f"### Query:{msg['content']} ### Prompt:")
+            batch_attacks = self.get_attack_prompts(f"### Query:{msg} ### Prompt:")
             model.to(device)
-            losses = find_executable_batch_size(
-                self.get_losses, self.config.target_lm.batch_size
-            )(msg, attacks, target, model, tokenizer)
-            token_list = [
-                torch.cat(prepare_tokens(
-                    tokenizer,
-                    prompt=msg["content"],
-                    target="ZZZZZ",  # need dummy target (probably)
-                    attack=attack,
-                )[:4])
-                for attack in attacks
+            attack_conversations = [
+                [{"role": "user", "content": f"{msg}{attack}"}, {"role": "assistant", "content": target}]
+                for attack in batch_attacks
             ]
-            completions = generate_ragged_batched(
+            batch_losses = self.get_losses(attack_conversations, model, tokenizer)
+            token_list = [
+                torch.cat(prepare_conversation(tokenizer, attack_conversation)[0][:-1])
+                for attack_conversation in attack_conversations
+            ]
+            batch_completions = generate_ragged_batched(
                 model,
                 tokenizer,
                 token_list=token_list,
-                initial_batch_size=self.config.target_lm.batch_size,
-                max_new_tokens=self.config.target_lm.max_new_tokens
+                max_new_tokens=self.config.generation_config.max_new_tokens,
+                temperature=self.config.generation_config.temperature,
+                top_p=self.config.generation_config.top_p,
+                top_k=self.config.generation_config.top_k,
+                num_return_sequences=self.config.generation_config.num_return_sequences,
             )
-            results.attacks.append(attacks)
-            results.losses.append(losses)
-            results.prompts.append(msg)
-            results.completions.append(completions)
-            results.times.append(time.time() - t0)
-        return results
+            for i in range(len(attack_conversations)):
+                attack_conversations[i][-1]["content"] = ""
+            step_results = [
+                AttackStepResult(
+                    step=i,
+                    model_completions=batch_completions[i],
+                    jailbreak_scores={},
+                    time_taken=time.time() - t0,
+                    loss=batch_losses[i],
+                    model_input=attack_conversations[i],
+                    model_input_tokens=token_list[i].tolist()
+                )
+                for i in range(len(batch_attacks))
+            ]
+            single_attack_run_result = SingleAttackRunResult(
+                original_prompt=conversation,
+                steps=step_results,
+                total_time=time.time() - t0
+            )
+            runs.append(single_attack_run_result)
+        return AttackResult(runs)
 
     def get_attack_prompts(self, msg):
         prompter_model = PrompterModel(self.config.prompter_lm, self.config.num_steps)
@@ -103,30 +115,22 @@ class AmpleGCGAttack(Attack):
             add_generation_prompt=True,
         )
 
-    def get_losses(self, batch_size, prompt, attacks, target, model, tokenizer):
-        outputs = []
-        for i in trange(0, len(attacks), batch_size, desc="Target Model"):
-            token_list = [
-                prepare_tokens(
-                    tokenizer,
-                    prompt=prompt["content"],
-                    target=target,  # need dummy target (probably)
-                    attack=attack,
-                )
-                for attack in attacks[i : i + batch_size]
-            ]
-            target_lengths = [e.size(0) for a, b, c, d, e in token_list]
-            token_list = [torch.cat(t, dim=0) for t in token_list]
-            targets = [t.roll(-1, 0) for t in token_list]
+    def get_losses(self, attack_conversations, model, tokenizer):
+        token_list = [
+            prepare_conversation(tokenizer, attack_conversation)[0]
+            for attack_conversation in attack_conversations
+        ]
+        target_lengths = [t[-1].size(0) for t in token_list]
+        token_list = [torch.cat(t, dim=0) for t in token_list]
+        targets = [t.roll(-1, 0) for t in token_list]
 
-            losses = get_batched_losses(
-                model,
-                targets=targets,
-                token_list=token_list,
-            )
-            losses = [l[-tl:].mean().item() for l, tl in zip(losses, target_lengths)]
-            outputs.extend(losses)
-        return outputs
+        losses = get_losses_batched(
+            model,
+            targets=targets,
+            token_list=token_list,
+        )
+        losses = [l[-tl:].mean().item() for l, tl in zip(losses, target_lengths)]
+        return losses
 
 
 class PrompterModel(nn.Module):
@@ -144,7 +148,7 @@ class PrompterModel(nn.Module):
             "num_beams": num_steps,
             "num_beam_groups": num_steps,
         }
-        self.gen_config = GenerationConfig(
+        self.gen_config = HuggingFaceGenerationConfig(
             **config.generation_config, **self.gen_kwargs
         )
 

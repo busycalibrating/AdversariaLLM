@@ -68,7 +68,6 @@ class PGDAttack(Attack):
         else:
             original_model = AutoModelForCausalLM.from_pretrained(self.config.original_model, torch_dtype=torch.bfloat16, low_cpu_mem_usage=True, device_map="auto").eval()
 
-
         for msg, target in dataset:
             pre_tokens, prompt_tokens, attack_tokens, post_tokens, target_tokens = (
                 prepare_tokens(
@@ -162,9 +161,28 @@ class PGDAttack(Attack):
             attack_masks_batch = attack_masks[i : i + batch_size].to(model.device)
             target_masks_batch = target_masks[i : i + batch_size].to(model.device)
 
+            B = x_batch.shape[0]
+
             original_embeddings = model.get_input_embeddings()(x_batch)
             if self.zero_init_attack:
                 original_embeddings[attack_masks_batch.bool()] = 0
+
+            # loss to minimize interference of adversarial attack on the model
+            with torch.no_grad():
+                prompt_benign = "Can you recommend a chocolate cake recipe for two?"
+                pre_tokens_benign, prompt_tokens_benign, attack_tokens_benign, post_tokens_benign, _ = prepare_tokens(tokenizer, prompt_benign, "", attack=self.config.optim_str_init, placement="suffix")
+                benign_ref = torch.cat([pre_tokens_benign, prompt_tokens_benign, post_tokens_benign]).unsqueeze(0).to(model.device)
+                target_tokens_benign = generate_ragged_batched(model, tokenizer, benign_ref, max_new_tokens=64, return_tokens=True)[0]
+                pre_embeds_benign, post_embeds_benign, prompt_embeds_benign, attack_embeds_benign, target_embeds_benign = [model.get_input_embeddings()(ids.to(model.device).unsqueeze(0)) for ids in (pre_tokens_benign, post_tokens_benign, prompt_tokens_benign, attack_tokens_benign, target_tokens_benign)]
+                pre_embeds_benign = pre_embeds_benign.repeat(B, 1, 1)
+                prompt_embeds_benign = prompt_embeds_benign.repeat(B, 1, 1)
+                post_embeds_benign = post_embeds_benign.repeat(B, 1, 1)
+                target_embeds_benign = target_embeds_benign.repeat(B, 1, 1)
+
+                gen_size = post_tokens_benign.size(0) + target_tokens_benign.size(0)
+                model_logits_no_attack = model(
+                    inputs_embeds=torch.cat([pre_embeds_benign, prompt_embeds_benign, post_embeds_benign, target_embeds_benign], dim=1),
+                ).logits[:, -gen_size:]
 
             perturbed_embeddings = original_embeddings.detach().clone()
             for _ in (pbar := trange(self.config.num_steps)):
@@ -182,7 +200,7 @@ class PGDAttack(Attack):
                     y_batch.view(-1),
                     reduction="none",
                 )
-                loss = loss.view(perturbed_embeddings.size(0), -1)
+                loss = loss.view(B, -1)
                 loss = loss * target_masks_batch  # (B, L)
                 loss = loss.mean(dim=1)  # (B,)
 
@@ -200,12 +218,27 @@ class PGDAttack(Attack):
                         F.log_softmax(logits, dim=-1),
                         F.softmax(original_logits, dim=-1),
                         reduction="batchmean"
-                    ) * self.config.tie_embeddings
+                    ) * self.config.tie_logits
                     # Calculate cosine similarity for each layer's features
                     for perturbed_layer, original_layer in zip(features, original_features):
                         kl_div_loss += (1 - F.cosine_similarity(perturbed_layer, original_layer, dim=-1).mean()) * self.config.tie_features
                 else:
                     kl_div_loss = 0.0
+
+                attack_embeds_benign = perturbed_embeddings[attack_masks_batch.bool()].view(B, -1, perturbed_embeddings.size(-1))
+                inputs_embeds = torch.cat([pre_embeds_benign, prompt_embeds_benign, attack_embeds_benign, post_embeds_benign, target_embeds_benign], dim=1)
+                model_outputs = model(inputs_embeds=inputs_embeds)
+                model_logits = model_outputs.logits[:, -gen_size:]
+                # model_features = model_outputs.hidden_states
+                kl_div_loss = F.kl_div(
+                    F.log_softmax(model_logits, dim=-1),
+                    F.softmax(model_logits_no_attack, dim=-1),
+                    reduction="batchmean"
+                ) * self.config.tie_logits
+                # Calculate cosine similarity for each layer's features
+                # for perturbed_layer, original_layer in zip(model_features, model_features_no_attack):
+                #     kl_div_loss += (1 - F.cosine_similarity(perturbed_layer[:, -gen_size:], original_layer[:, -gen_size:], dim=-1).mean()) * self.config.tie_features
+
                 total_loss = loss + kl_div_loss
                 total_loss.sum().backward()
                 for j, l in enumerate(loss.detach().tolist()):

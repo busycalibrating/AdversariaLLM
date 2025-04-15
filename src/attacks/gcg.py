@@ -19,7 +19,7 @@ Fixes several issues in nanoGCG, mostly re. Llama-2 & tokenization
 import gc
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import Literal
 
@@ -27,13 +27,14 @@ import torch
 import transformers
 from torch import Tensor
 from tqdm import trange
-from transformers import DynamicCache
+from transformers import DynamicCache, PreTrainedModel, PreTrainedTokenizer
 
 from src.lm_utils import (filter_suffix, generate_ragged_batched,
                           get_disallowed_ids, prepare_conversation,
                           with_max_batchsize)
 
-from .attack import Attack, AttackResult
+from src.dataset import PromptDataset
+from .attack import Attack, AttackResult, GenerationConfig, SingleAttackRunResult, AttackStepResult
 
 
 @dataclass
@@ -41,10 +42,9 @@ class GCGConfig:
     name: str = "gcg"
     type: str = "discrete"
     placement: str = "suffix"
-    generate_completions: Literal["all", "best", "last"] = "all"
+    generation_config: GenerationConfig = field(default_factory=GenerationConfig)
     num_steps: int = 250
     seed: int = 0
-    batch_size: int = 512
     optim_str_init: str = "x x x x x x x x x x x x x x x x x x x x"
     search_width: int = 512
     topk: int = 256
@@ -60,7 +60,6 @@ class GCGConfig:
     filter_ids: bool = True
     verbosity: str = "WARNING"
     token_selection: str = "default"
-    max_new_tokens: int = 256
     grow_target: bool = False
 
 
@@ -138,23 +137,16 @@ class GCGAttack(Attack):
             self.logger.addHandler(handler)
             self.logger.setLevel(logging.INFO)
 
-    def run(self, model, tokenizer, dataset) -> AttackResult:
+    def run(self, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, dataset: PromptDataset) -> AttackResult:
         not_allowed_ids = get_disallowed_ids(tokenizer, self.config.allow_non_ascii, self.config.allow_special).to(model.device)
-        results = AttackResult([], [], [], [], [])
-        for msg, target in dataset:
-            msg: dict[str, str]
-            target: str
+        runs = []
+        for conversation in dataset:
             t0 = time.time()
-
-            clean_conversation = [
-                {"role": "user", "content": msg["content"]},
-                {"role": "assistant", "content": target},
-            ]
             attack_conversation = [
-                {"role": "user", "content": msg["content"] + self.config.optim_str_init},
-                {"role": "assistant", "content": target},
+                {"role": "user", "content": conversation[0]["content"] + self.config.optim_str_init},
+                {"role": "assistant", "content": conversation[1]["content"]},
             ]
-            pre_ids, attack_prefix_ids, prompt_ids, attack_suffix_ids, post_ids, target_ids = prepare_conversation(tokenizer, clean_conversation, attack_conversation)[0]
+            pre_ids, attack_prefix_ids, prompt_ids, attack_suffix_ids, post_ids, target_ids = prepare_conversation(tokenizer, conversation, attack_conversation)[0]
 
             pre_ids = pre_ids.unsqueeze(0).to(model.device)
             # attack_prefix_ids = attack_prefix_ids.unsqueeze(0).to(model.device)
@@ -171,7 +163,7 @@ class GCGAttack(Attack):
             ]
 
             # Compute the KV Cache for tokens that appear before the optimized tokens
-            if self.config.use_prefix_cache and model.name_or_path != "google/gemma-2-2b-it":
+            if self.config.use_prefix_cache and "gemma-2" not in model.name_or_path:
                 with torch.no_grad():
                     self.prefix_cache = DynamicCache()
                     output = model(inputs_embeds=pre_prompt_embeds, past_key_values=self.prefix_cache, use_cache=True)
@@ -219,14 +211,14 @@ class GCGAttack(Attack):
                         # other's tokenization in some cases.
                         idx = filter_suffix(
                             tokenizer,
-                            clean_conversation,
-                            [[torch.empty((512, 0)), sampled_ids.cpu()]],
+                            conversation,
+                            [[None, sampled_ids.cpu()]],
                         )
                         sampled_ids = sampled_ids[idx]
                         sampled_ids_pos = sampled_ids_pos[idx]
 
                     compute_loss_fn = partial(self.compute_candidates_loss, model)
-                    loss, acc = with_max_batchsize(compute_loss_fn, sampled_ids, initial_batch_size=self.config.batch_size)
+                    loss, acc = with_max_batchsize(compute_loss_fn, sampled_ids)
 
                     current_loss = loss.min().item()
                     optim_ids = sampled_ids[loss.argmin()].unsqueeze(0)
@@ -247,44 +239,45 @@ class GCGAttack(Attack):
                     self.logger.info("Early stopping due to finding a perfect match.")
                     break
 
-            # Generate completions
-            match self.config.generate_completions:
-                case "all":
-                    attacks = optim_strings
-                case "best":
-                    attacks = [optim_strings[losses.index(min(losses))]]
-                case "last":
-                    attacks = [optim_strings[-1]]
-                case _:
-                    raise ValueError(
-                        f"Unknown value for generate_completions: {self.config.generate_completions}"
-                    )
-
             token_list = []
-            for attack in attacks:
-                clean_conversation = [
-                    {"role": "user", "content": msg["content"]},
-                    {"role": "assistant", "content": target},
-                ]
+            attack_conversations = []
+            for attack in optim_strings:
                 attack_conversation = [
-                    {"role": "user", "content": msg["content"] + attack},
-                    {"role": "assistant", "content": target},
+                    {"role": "user", "content": conversation[0]["content"] + attack},
+                    {"role": "assistant", "content": ""},
                 ]
-                tokens = prepare_conversation(tokenizer, clean_conversation, attack_conversation)[0]
+                tokens = prepare_conversation(tokenizer, conversation, attack_conversation)[0]
                 token_list.append(torch.cat(tokens[:5]))
-            completions = generate_ragged_batched(
+                attack_conversations.append(attack_conversation)
+            batch_completions = generate_ragged_batched(
                 model,
                 tokenizer,
                 token_list=token_list,
-                initial_batch_size=self.config.batch_size,
-                max_new_tokens=self.config.max_new_tokens
+                max_new_tokens=self.config.generation_config.max_new_tokens,
+                temperature=self.config.generation_config.temperature,
+                top_p=self.config.generation_config.top_p,
+                top_k=self.config.generation_config.top_k,
+                num_return_sequences=self.config.generation_config.num_return_sequences,
+            )  # (N_steps, N_return_sequences, T)
+            steps = []
+            for i in range(len(optim_strings)):
+                step = AttackStepResult(
+                    step=i,
+                    model_completions=batch_completions[i],
+                    time_taken=(time.time() - t0) / len(optim_strings),
+                    loss=losses[i],
+                    model_input=attack_conversations[i],
+                    model_input_tokens=token_list[i].tolist(),
+                )
+                steps.append(step)
+
+            run = SingleAttackRunResult(
+                original_prompt=conversation,
+                steps=steps,
+                total_time=time.time() - t0,
             )
-            results.losses.append(losses)
-            results.attacks.append(optim_strings)
-            results.prompts.append(msg)
-            results.completions.append(completions)
-            results.times.append(times)
-        return results
+            runs.append(run)
+        return AttackResult(runs=runs)
 
     def init_buffer(self, model, init_buffer_ids):
         config = self.config
@@ -295,7 +288,7 @@ class GCGAttack(Attack):
 
         # Compute the loss on the initial buffer entries
         compute_loss_fn = partial(self.compute_candidates_loss, model)
-        init_buffer_losses, init_buffer_acc = with_max_batchsize(compute_loss_fn, init_buffer_ids, initial_batch_size=self.config.batch_size)
+        init_buffer_losses, _ = with_max_batchsize(compute_loss_fn, init_buffer_ids)
 
         # Populate the buffer
         for i in range(true_buffer_size):
@@ -497,6 +490,30 @@ class SubstitutionSelectionStrategy:
             sampled_ids : Tensor, shape = (search_width, n_optim_ids)
                 sampled token ids
         """
+        # n_smoothing = 64
+        # grad_ids = ids.clone().unsqueeze(0).repeat(n_smoothing, 1)
+        # allowed_ids = [i for i in range(self.target_embeds.size(-1)) if i not in not_allowed_ids]
+        # import random
+        # for i in range(1, n_smoothing):
+        #     random_idx = random.choice(allowed_ids)
+        #     random_pos = torch.randint(0, grad_ids.shape[1], (1,))
+        #     grad_ids[i, 0] = random_idx
+        # print(grad_ids)
+        # grad = self.compute_token_gradient(grad_ids, model)
+        # # Calculate cosine similarity between the first gradient and all others
+        # first_grad = grad[0].view(-1)  # Flatten the first gradient
+        # cosine_similarities = []
+
+        # for i in range(1, n_smoothing):
+        #     other_grad = grad[i].view(-1)  # Flatten the current gradient
+        #     # Calculate cosine similarity
+        #     cos_sim = torch.nn.functional.cosine_similarity(first_grad.unsqueeze(0), other_grad.unsqueeze(0), dim=1)
+        #     cosine_similarities.append(cos_sim.item())
+
+        # print("Cosine similarities between first gradient and others:")
+        # print(cosine_similarities)
+        # grad = grad.mean(0)  # (n_optim_ids, vocab_size)
+
         grad = self.compute_token_gradient(ids.unsqueeze(0), model).squeeze(0)  # (n_optim_ids, vocab_size)
         n_optim_tokens = len(ids)
         original_ids = ids.repeat(search_width, 1)
@@ -677,9 +694,7 @@ class SubstitutionSelectionStrategy:
         # We then crop again randomly to search_width candidates
         topk_ids = topk_ids[
             torch.randperm(topk_ids.size(0), device=topk_ids.device)[:search_width]
-        ].unsqueeze(
-            1
-        )  # (search_width, 1)
+        ].unsqueeze(1)  # (search_width, 1)
 
         sampled_ids_pos = topk_ids // grad.size(1)
         sampled_topk_idx = topk_ids % grad.size(1)
@@ -707,6 +722,7 @@ class SubstitutionSelectionStrategy:
             grad : Tensor, shape = (N, n_optim_ids, vocab_size)
                 the gradient of the GCG loss computed with respect to the one-hot token embeddings
         """
+        assert optim_ids.ndim == 2
         embedding_layer = model.get_input_embeddings()
 
         # Create the one-hot encoding matrix of our optimized token ids
@@ -759,9 +775,7 @@ class SubstitutionSelectionStrategy:
 
         # Shift logits so token n-1 predicts token n
         shift = input_embeds.shape[1] - self.target_ids.shape[1]
-        shift_logits = logits[
-            ..., shift - 1 : -1, :
-        ].contiguous()  # (1, num_target_ids, vocab_size)
+        shift_logits = logits[..., shift - 1 : -1, :].contiguous()  # (1, num_target_ids, vocab_size)
         shift_labels = self.target_ids.repeat(B, 1)
 
         loss = compute_loss(shift_logits, shift_labels, self.config.loss, self.config.mellowmax_alpha)

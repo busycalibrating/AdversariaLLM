@@ -12,10 +12,7 @@ from tqdm import tqdm
 from transformers import DynamicCache, PreTrainedTokenizerBase, PreTrainedModel
 
 from src.io_utils import free_vram
-
-
-def generate_batched_completions(*args, **kwargs):
-    raise NotImplementedError("Please migrate to generate_ragged (direct replacement), or generate_ragged_batched (with dynamic batch size adjustment).")
+from src.attacks.attack import Conversation
 
 
 @torch.no_grad()
@@ -28,7 +25,7 @@ def generate_ragged_batched(
     use_cache: bool = True,
     verbose: bool = False,
     **kwargs,
-) -> list[str]:
+) -> list[list[str]]:
     """
     Generate completions for input_list, which can be either embeddings or tokens.
     Dynamically adjust batch size if an OOM error occurs.
@@ -48,6 +45,11 @@ def generate_ragged_batched(
     input_type = "tokens" if token_list is not None else "embeddings"
     input_list = token_list if token_list is not None else embedding_list
 
+    # Shorter sequences will come first to maximize batch size
+    sorted_indexed_inputs = sorted(list(enumerate(input_list)), key=lambda x: x[1].size(0))
+    sorted_input_list = [item for _, item in sorted_indexed_inputs]
+    original_indices = [index for index, _ in sorted_indexed_inputs]
+
     def func(chunk):
         """Wrapper function to handle a single chunk of inputs."""
         return generate_ragged(
@@ -58,11 +60,16 @@ def generate_ragged_batched(
             use_cache=use_cache,
             **kwargs,
         )
-    outputs = with_max_batchsize(func, input_list, initial_batch_size=initial_batch_size, verbose=verbose)
+    sorted_outputs = with_max_batchsize(func, sorted_input_list, initial_batch_size=initial_batch_size, verbose=verbose)
+
+    # Unsort the outputs to match the original input order
+    outputs = [None] * len(input_list)
+    for i, original_index in enumerate(original_indices):
+        outputs[original_index] = sorted_outputs[i]
     return outputs
 
 
-def with_max_batchsize(function: Callable, *inputs, initial_batch_size: int = 128, verbose: bool = False):
+def with_max_batchsize(function: Callable, *inputs, initial_batch_size: int | None = None, verbose: bool = False):
     """
     Dynamically adjust batch size if an OOM error occurs.
     TODO: Try increasing batch size again if we have enough VRAM.
@@ -91,6 +98,8 @@ def with_max_batchsize(function: Callable, *inputs, initial_batch_size: int = 12
 
     outputs = []
     i = 0
+    if initial_batch_size is None:
+        initial_batch_size = input_length
     batch_size = min(initial_batch_size, input_length)
     pbar = tqdm(total=input_length, desc=f"Running function b={batch_size}") if verbose else None
 
@@ -154,7 +163,8 @@ def generate_ragged(
     temperature: float = 0.0,
     top_p: float = 1.0,
     top_k: int = 0,
-) -> list[str] | torch.Tensor:
+    num_return_sequences: int = 1,
+) -> list[list[str]] | torch.Tensor:
     """
     Generate completions for multiple prompts in a single batch.
     No KV-cache for left-padding yet.
@@ -191,7 +201,7 @@ def generate_ragged(
             A list of embeddings for each prompt. Should not be padded and can be of different lengths.
         token_list: list[torch.Tensor], optional
             A list of tokens for each prompt. Should not be padded and can be of different lengths.
-        max_new_tokens: The maximum number of tokens to generate for each prompt.
+        max_new_tokens: The maximum number of tokens to generate for each prompt. If -1, generate until EOS token.
     Returns:
         A list of completions for each prompt.
     """
@@ -225,145 +235,149 @@ def generate_ragged(
         return next_tokens
 
     B = len(embedding_list)
-    tokens = []
-    generation_completed = torch.zeros(B, dtype=torch.bool)
-    if padding_side == "left":
-        if use_cache:
-            raise NotImplementedError("KV-cache not implemented for left padding.")
-        # Add left padding
-        embeddings = pad_sequence(
-            [e.flip(0) for e in embedding_list], batch_first=True, padding_value=0
-        ).flip(1)
-        padded_embeddings = F.pad(embeddings, (0, 0, 0, max_new_tokens))
-        # Create attention mask and position ids
-        lengths = [
-            {
-                "padding": embeddings.size(1) - e.size(0),
-                "generation": max_new_tokens - e.size(0),
-            }
-            for e in embedding_list
-        ]
-        attention_mask = torch.stack(
-            [
-                torch.cat([torch.zeros(pl["padding"]), torch.ones([pl["generation"]])])
-                for pl in lengths
+    all_tokens = []
+    for i in range(num_return_sequences):
+        tokens = torch.full((B, max_new_tokens), tokenizer.pad_token_id)
+        generation_completed = torch.zeros(B, dtype=torch.bool)
+        if padding_side == "left":
+            if use_cache:
+                raise NotImplementedError("KV-cache not implemented for left padding.")
+            # Add left padding
+            embeddings = pad_sequence(
+                [e.flip(0) for e in embedding_list], batch_first=True, padding_value=0
+            ).flip(1)
+            padded_embeddings = F.pad(embeddings, (0, 0, 0, max_new_tokens))
+            # Create attention mask and position ids
+            lengths = [
+                {
+                    "padding": embeddings.size(1) - e.size(0),
+                    "generation": max_new_tokens - e.size(0),
+                }
+                for e in embedding_list
             ]
-        ).to(model.device)
-        position_ids = torch.stack(
-            [
-                torch.cat([torch.zeros(pl["padding"]), torch.arange(pl["generation"])])
-                for pl in lengths
-            ]
-        ).long().to(model.device)
-        next_token_idx = embeddings.size(1)
-        for i in range(max_new_tokens):
-            outputs = model(
-                inputs_embeds=padded_embeddings[:, :next_token_idx],
-                attention_mask=attention_mask[:, :next_token_idx],
-                position_ids=position_ids[:, :next_token_idx],
-            )
-            logits = outputs.logits[torch.arange(B), -1]
-            next_tokens = sample_next_token(logits)
-            padded_embeddings[torch.arange(B), next_token_idx] = (
-                model.get_input_embeddings()(next_tokens).detach()
-            )
-            tokens.append(next_tokens.cpu())
-            generation_completed |= next_tokens.cpu() == tokenizer.eos_token_id
-            if generation_completed.all():
-                logging.info(f"Early exit after {i}/{max_new_tokens} tokens.")
-                break
-            next_token_idx += 1
-    elif padding_side == "right":
-        # Add right padding
-        embeddings = pad_sequence(
-            [e for e in embedding_list], batch_first=True, padding_value=0
-        )
-        padded_embeddings = F.pad(embeddings, (0, 0, 0, max_new_tokens))
-        next_token_idx = torch.tensor([e.size(0) for e in embedding_list])
-
-        if use_cache:
-            # This is the hot path so we have additional optimizations here.
-            # As we generate tokens, we keep track of which prompts are completed,
-            # and only generate tokens for the active prompts.
-            # This is slightly (~20%) slower if all prompts have similar length,
-            # but faster if prompts have different lengths and **saves VRAM**.
-
-            # Fill prefix cache
-            past_key_values = DynamicCache()
-            if next_token_idx.min() > 1:
-                model(
-                    inputs_embeds=padded_embeddings[:, : next_token_idx.min() - 1],
-                    past_key_values=past_key_values,
-                    use_cache=True,
-                )
-            for i in range(max_new_tokens):
-                # Caching with right padding is a bit tricky:
-                # We have to feed more than one token at each forward pass :(.
-                # Instead, we feed a 'window' from the last token of the shortest prompt
-                # to the last token of the longest prompt.
-                # This means that caching works best when sequences have similar length.
-                active_mask = ~generation_completed
-                active_mask_idx = torch.arange(B)[active_mask]
-                active_embeddings = padded_embeddings[active_mask, next_token_idx.min() - 1 : next_token_idx.max()]
-                logits = model(
-                    inputs_embeds=active_embeddings,
-                    past_key_values=past_key_values,
-                    use_cache=True,
-                ).logits
-
-                next_tokens = torch.full((B,), tokenizer.eos_token_id, device=model.device)
-                next_token_idx_active = next_token_idx[active_mask]
-                logits = logits[
-                    torch.arange(logits.size(0)),
-                    next_token_idx_active - next_token_idx.min()
+            attention_mask = torch.stack(
+                [
+                    torch.cat([torch.zeros(pl["padding"]), torch.ones([pl["generation"]])])
+                    for pl in lengths
                 ]
-                next_tokens[active_mask] = sample_next_token(logits)
-                padded_embeddings[active_mask_idx, next_token_idx_active] = model.get_input_embeddings()(next_tokens[active_mask])
-                tokens.append(next_tokens.cpu())
-                continue_mask = (next_tokens.cpu() != tokenizer.eos_token_id)[active_mask]
-                # have to manually crop the past_key_values to the correct length
-                # since we only add a single step at a time
-                for j in range(len(past_key_values.key_cache)):
-                    past_key_values.key_cache[j] = past_key_values.key_cache[j][continue_mask, :, :next_token_idx.min()]
-                    past_key_values.value_cache[j] = past_key_values.value_cache[j][continue_mask, :, :next_token_idx.min()]
-
-                generation_completed |= next_tokens.cpu() == tokenizer.eos_token_id
-                if generation_completed.all():
-                    logging.info(f"Early exit after {i}/{max_new_tokens} tokens.")
-                    break
-                next_token_idx += 1
-        else:
+            ).to(model.device)
+            position_ids = torch.stack(
+                [
+                    torch.cat([torch.zeros(pl["padding"]), torch.arange(pl["generation"])])
+                    for pl in lengths
+                ]
+            ).long().to(model.device)
+            next_token_idx = embeddings.size(1)
             for i in range(max_new_tokens):
-                outputs = model(inputs_embeds=padded_embeddings[:, : next_token_idx.max()])
-                logits = outputs.logits[torch.arange(B), next_token_idx - 1]
+                outputs = model(
+                    inputs_embeds=padded_embeddings[:, :next_token_idx],
+                    attention_mask=attention_mask[:, :next_token_idx],
+                    position_ids=position_ids[:, :next_token_idx],
+                )
+                logits = outputs.logits[torch.arange(B), -1]
                 next_tokens = sample_next_token(logits)
                 padded_embeddings[torch.arange(B), next_token_idx] = (
                     model.get_input_embeddings()(next_tokens).detach()
                 )
-                tokens.append(next_tokens.cpu())
+                tokens[:, i] = next_tokens.cpu()
                 generation_completed |= next_tokens.cpu() == tokenizer.eos_token_id
                 if generation_completed.all():
                     logging.info(f"Early exit after {i}/{max_new_tokens} tokens.")
                     break
                 next_token_idx += 1
-    else:
-        raise ValueError(f"Unknown padding_side: {padding_side}")
+        elif padding_side == "right":
+            # Add right padding
+            embeddings = pad_sequence(
+                [e for e in embedding_list], batch_first=True, padding_value=0
+            )
+            padded_embeddings = F.pad(embeddings, (0, 0, 0, max_new_tokens))
+            next_token_idx = torch.tensor([e.size(0) for e in embedding_list])
 
-    tokens = torch.stack(tokens, dim=0).T
+            if use_cache:
+                # This is the hot path so we have additional optimizations here.
+                # As we generate tokens, we keep track of which prompts are completed,
+                # and only generate tokens for the active prompts.
+                # This is slightly (~20%) slower if all prompts have similar length,
+                # but faster if prompts have different lengths and **saves VRAM**.
+
+                # Fill prefix cache
+                past_key_values = DynamicCache()
+                if next_token_idx.min() > 1:
+                    model(
+                        inputs_embeds=padded_embeddings[:, : next_token_idx.min() - 1],
+                        past_key_values=past_key_values,
+                        use_cache=True,
+                    )
+                for i in range(max_new_tokens):
+                    # Caching with right padding is a bit tricky:
+                    # We have to feed more than one token at each forward pass :(.
+                    # Instead, we feed a 'window' from the last token of the shortest prompt
+                    # to the last token of the longest prompt.
+                    # This means that caching works best when sequences have similar length.
+                    active_mask = ~generation_completed
+                    active_mask_idx = torch.arange(B)[active_mask]
+                    active_embeddings = padded_embeddings[active_mask, next_token_idx.min() - 1 : next_token_idx.max()]
+                    logits = model(
+                        inputs_embeds=active_embeddings,
+                        past_key_values=past_key_values,
+                        use_cache=True,
+                    ).logits
+
+                    next_tokens = torch.full((B,), tokenizer.eos_token_id, device=model.device)
+                    next_token_idx_active = next_token_idx[active_mask]
+                    logits = logits[
+                        torch.arange(logits.size(0)),
+                        next_token_idx_active - next_token_idx.min()
+                    ]
+                    next_tokens[active_mask] = sample_next_token(logits)
+                    padded_embeddings[active_mask_idx, next_token_idx_active] = model.get_input_embeddings()(next_tokens[active_mask])
+                    tokens[:, i] = next_tokens.cpu()
+                    continue_mask = (next_tokens.cpu() != tokenizer.eos_token_id)[active_mask]
+                    # have to manually crop the past_key_values to the correct length
+                    # since we only add a single step at a time
+                    for j in range(len(past_key_values.key_cache)):
+                        past_key_values.key_cache[j] = past_key_values.key_cache[j][continue_mask, :, :next_token_idx.min()]
+                        past_key_values.value_cache[j] = past_key_values.value_cache[j][continue_mask, :, :next_token_idx.min()]
+
+                    generation_completed |= next_tokens.cpu() == tokenizer.eos_token_id
+                    if generation_completed.all():
+                        logging.info(f"Early exit after {i}/{max_new_tokens} tokens.")
+                        break
+                    next_token_idx += 1
+            else:
+                for i in range(max_new_tokens):
+                    outputs = model(inputs_embeds=padded_embeddings[:, : next_token_idx.max()])
+                    logits = outputs.logits[torch.arange(B), next_token_idx - 1]
+                    next_tokens = sample_next_token(logits)
+                    padded_embeddings[torch.arange(B), next_token_idx] = (
+                        model.get_input_embeddings()(next_tokens).detach()
+                    )
+                    tokens[:, i] = next_tokens.cpu()
+                    generation_completed |= next_tokens.cpu() == tokenizer.eos_token_id
+                    if generation_completed.all():
+                        logging.info(f"Early exit after {i}/{max_new_tokens} tokens.")
+                        break
+                    next_token_idx += 1
+        else:
+            raise ValueError(f"Unknown padding_side: {padding_side}")
+        all_tokens.append(tokens)
+
+    all_tokens = torch.stack(all_tokens, dim=1)  # (B, N, T)
     if return_tokens:
-        return tokens
-    completion = tokenizer.batch_decode(tokens, skip_special_tokens=False)
-    completion = [c.split(tokenizer.eos_token)[0] for c in completion]
+        return all_tokens
+    completion = [tokenizer.batch_decode(all_tokens[i], skip_special_tokens=False) for i in range(B)]
+    completion = [[c.split(tokenizer.eos_token)[0] for c in completion[i]] for i in range(B)]
     return completion
 
 
 @torch.no_grad
-def get_batched_losses(
-    model,
-    targets,
-    embedding_list=None,
-    token_list=None,
-    padding_side="right",
+def get_losses_batched(
+    model: PreTrainedModel,
+    targets: list[torch.Tensor],
+    embedding_list: list[torch.Tensor] | None = None,
+    token_list: list[torch.Tensor] | None = None,
+    padding_side: Literal["left", "right"] = "right",
+    initial_batch_size: int | None = None,
 ) -> list[torch.Tensor]:
     """
     Get per-timestep losses for multiple ragged prompts in a single batch.
@@ -393,80 +407,85 @@ def get_batched_losses(
         ]
     assert embedding_list is not None
     assert all(t.ndim == 1 for t in targets), "Targets must be 1D."
-    targets = [t.to(model.device) for t in targets]
 
-    # We first pad the embeddings to the maximum context length of the model.
-    B = len(embedding_list)
-    if padding_side == "left":
-        print("Warning: Padding side 'left' is not recommended for get_batched_losses as it may yield nans.")
-        # Add left padding
-        embeddings = pad_sequence(
-            [e.flip(0) for e in embedding_list], batch_first=True, padding_value=0
-        ).flip(1)
-        targets_padded = pad_sequence(
-            [t.flip(0) for t in targets], batch_first=True, padding_value=0
-        ).flip(1)
-        # Create attention mask and position ids
-        lengths = [
-            {
-                "padding": embeddings.size(1) - e.size(0),
-                "generation": e.size(0),
-            }
-            for e in embedding_list
-        ]
-        attention_mask = torch.stack(
-            [
-                torch.cat([torch.zeros(pl["padding"]), torch.ones([pl["generation"]])])
-                for pl in lengths
+    def get_losses_func(embedding_list, targets):
+        # We first pad the embeddings to the maximum context length of the model.
+        B = len(embedding_list)
+        if padding_side == "left":
+            print("Warning: Padding side 'left' is not recommended for get_batched_losses as it may yield nans.")
+            # Add left padding
+            embeddings = pad_sequence(
+                [e.flip(0) for e in embedding_list], batch_first=True, padding_value=0
+            ).flip(1)
+
+            targets_padded = pad_sequence(
+                [t.flip(0) for t in targets], batch_first=True, padding_value=0
+            ).flip(1)
+            # Create attention mask and position ids
+            lengths = [
+                {
+                    "padding": embeddings.size(1) - e.size(0),
+                    "generation": e.size(0),
+                }
+                for e in embedding_list
             ]
-        ).to(model.device)
-        position_ids = torch.stack(
-            [
-                torch.cat(
-                    [torch.zeros(pl["padding"]), torch.arange(pl["generation"])]
-                )
-                for pl in lengths
-            ]
-        ).long().to(model.device)
+            attention_mask = torch.stack(
+                [
+                    torch.cat([torch.zeros(pl["padding"]), torch.ones([pl["generation"]])])
+                    for pl in lengths
+                ]
+            ).to(model.device)
+            position_ids = torch.stack(
+                [
+                    torch.cat(
+                        [torch.zeros(pl["padding"]), torch.arange(pl["generation"])]
+                    )
+                    for pl in lengths
+                ]
+            ).long().to(model.device)
 
-        outputs = model(
-            inputs_embeds=embeddings,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-        ).logits
-        losses = F.cross_entropy(
-            outputs.reshape(-1, outputs.size(-1)),
-            targets_padded.view(-1),
-            reduction="none",
-        )
-        losses = losses.view(B, -1)
-        losses = [losses[i, -t.size(0) : -1] for i, t in enumerate(targets)]
-    elif padding_side == "right":
-        # Add right padding
-        embeddings = pad_sequence(
-            [e for e in embedding_list], batch_first=True, padding_value=0
-        )
-        targets_padded = pad_sequence(
-            [t for t in targets], batch_first=True, padding_value=0
-        )
-        outputs = model(inputs_embeds=embeddings).logits
-        losses = F.cross_entropy(
-            outputs.reshape(-1, outputs.size(-1)),
-            targets_padded.view(-1),
-            reduction="none",
-        )
-        losses = losses.view(B, -1)
-        losses = [losses[i, : t.size(0) - 1] for i, t in enumerate(targets)]
-    else:
-        raise ValueError(f"Unknown padding_side: {padding_side}")
+            outputs = model(
+                inputs_embeds=embeddings,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+            ).logits
+            losses = F.cross_entropy(
+                outputs.reshape(-1, outputs.size(-1)),
+                targets_padded.view(-1).to(outputs.device),
+                reduction="none",
+            )
+            losses = losses.view(B, -1)
+            losses = [losses[i, -t.size(0) : -1] for i, t in enumerate(targets)]
+        elif padding_side == "right":
+            # Add right padding
+            embeddings = pad_sequence(
+                [e for e in embedding_list], batch_first=True, padding_value=0
+            )
+            targets_padded = pad_sequence(
+                [t for t in targets], batch_first=True, padding_value=0
+            )
+            outputs = model(inputs_embeds=embeddings).logits
+            losses = F.cross_entropy(
+                outputs.reshape(-1, outputs.size(-1)),
+                targets_padded.view(-1).to(outputs.device),
+                reduction="none",
+            )
+            losses = losses.view(B, -1)
+            losses = [losses[i, : t.size(0) - 1] for i, t in enumerate(targets)]
+        else:
+            raise ValueError(f"Unknown padding_side: {padding_side}")
+        return losses
 
+    if initial_batch_size is None:
+        initial_batch_size = len(embedding_list)
+    losses = with_max_batchsize(get_losses_func, embedding_list, targets, initial_batch_size=initial_batch_size)
     return losses
 
 
 def prepare_tokens(
     tokenizer: PreTrainedTokenizerBase,
     prompt: str,
-    target: str,
+    target: str = "",
     attack: str | None = None,
     placement: Literal["prompt", "suffix"] = "suffix",
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -577,9 +596,9 @@ class TokenMergeError(Exception):
 
 def prepare_conversation(
     tokenizer: PreTrainedTokenizerBase,
-    conversation: list[dict[str, str]],
-    conversation_opt: list[dict[str, str]]|None = None,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    conversation: Conversation,
+    conversation_opt: Conversation | None = None,
+) -> list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]]:
     """For many attacks, we need to figure out how exactly to tokenize the input.
     Since only some models add a space or various control tokens, we have to figure
     out the exact format. We want to make sure that the first generated token is
@@ -637,7 +656,13 @@ def prepare_conversation(
     n_tokenized_clean = 0
     n_tokenized_attack = 0
     n_turns = len(conversation)
-    for i in range(1, n_turns, 2):
+
+    if conversation[0]["role"] == "system":
+        start_idx = 2
+    else:
+        start_idx = 1
+
+    for i in range(start_idx, n_turns, 2):
         # We work our way through the conversation, section by section.
 
         # First, lets get the tokens before the user message.
@@ -699,12 +724,13 @@ def prepare_conversation(
             post = torch.cat([post, torch.tensor([29871])])
             if sep[0] == 29871:
                 sep = sep[1:]
+        elif "gemma-2" in tokenizer.name_or_path.lower():
+            if i != start_idx:
+                t = torch.tensor([235248,    108])
+                sep = torch.cat([t, sep])
         target = tokenized_clean[n_tokenized_clean:-suffix_len]
         n_tokenized_clean += target.size(0)
         n_tokenized_attack += target.size(0)
-        if "gemma-2" in tokenizer.name_or_path.lower():
-            t = torch.tensor([235248,    108])
-            target = torch.cat([target, t])
         out_tokens.append([sep, pre_attack, prompt, suf_attack, post, target])
     return out_tokens
 
@@ -715,7 +741,7 @@ def generate_random_string(k: int = 5) -> str:
     return "".join(random.choices(chars, k=k))
 
 
-def _make_random_chats(n: int, k: int = 5) -> list[list[dict[str, str]]]:
+def _make_random_chats(n: int, k: int = 5) -> list[Conversation]:
     """Generate n random chat conversations with k-length messages.
 
     Returns:
@@ -794,7 +820,7 @@ def _extract_prefix_middle_suffix(vectors: list[torch.Tensor]) -> tuple[torch.Te
     return torch.tensor(prefix), torch.tensor(middle), torch.tensor(suffix)
 
 
-def tokenize_chats(chats: list[list[dict[str, str]]], tokenizer) -> list[torch.Tensor]:
+def tokenize_chats(chats: list[Conversation], tokenizer) -> list[torch.Tensor]:
     templates = tokenizer.apply_chat_template(
         chats, tokenize=False, add_generation_prompt=False
     )
@@ -925,8 +951,8 @@ def get_disallowed_ids(tokenizer: PreTrainedTokenizerBase, allow_non_ascii: bool
 
 def filter_suffix(
     tokenizer: PreTrainedTokenizerBase,
-    clean_conversation: list[dict[str, str]],
-    ids: list[torch.Tensor]
+    clean_conversation: Conversation,
+    ids: list[list[torch.Tensor | None, torch.Tensor | None]]
 ) -> list[int]:
     """
     Filters out sequences of token ids that are not invariant under decode-encode round trip.
@@ -941,7 +967,7 @@ def filter_suffix(
     ]
     >>> prefix_ids_turn0 = torch.randint(1000, 2000, (512, 10))
     >>> suffix_ids_turn0 = torch.randint(1000, 2000, (512, 10))
-    >>> prefix_ids_turn1 = torch.empty((512, 0))
+    >>> prefix_ids_turn1 = None
     >>> suffix_ids_turn1 = torch.empty((512, 0))
     >>> ids = [[prefix_ids_turn0, suffix_ids_turn0], [prefix_ids_turn1, suffix_ids_turn1]]
     >>> filter_suffix(tokenizer, clean_conversation, ids)
@@ -956,7 +982,7 @@ def filter_suffix(
         Outer list indexed by conversation turn index.
         Each inner list should contain [prefix_tensor, suffix_tensor],
         both shaped (search_width, n_optim_ids).
-
+        If the turn has no prefix or suffix, the corresponding item can also be None.
     Returns
     -------
     retain_idx : List[int]
@@ -964,29 +990,35 @@ def filter_suffix(
     """
     # Structural assertions
     assert all(len(turn_ids) == 2 for turn_ids in ids), "Each conversation turn must contain [prefix, suffix]."
-    search_width = ids[0][0].size(0)
+    search_width = max(
+        max(t.size(0) if t is not None else 0 for t, _ in ids),
+        max(t.size(0) if t is not None else 0 for _, t in ids)
+    )
     n_turns = len(clean_conversation)
     # Decode all ids
     decoded_tokens: list[tuple[list[str], list[str]]] = []
     for turn_prefix, turn_suffix in ids:
-        prefix_decoded = tokenizer.batch_decode(turn_prefix)
-        suffix_decoded = tokenizer.batch_decode(turn_suffix)
+        prefix_decoded = tokenizer.batch_decode(turn_prefix) if turn_prefix is not None else [""] * search_width
+        suffix_decoded = tokenizer.batch_decode(turn_suffix) if turn_suffix is not None else [""] * search_width
         decoded_tokens.append((prefix_decoded, suffix_decoded))
 
     retain_idx = []
     for i in range(search_width):
         conversation = []
         for j in range(n_turns):
+            content = clean_conversation[j]["content"]
             if j % 2 == 0:
-                conversation.append({"role": "user", "content": decoded_tokens[j//2][0][i] + clean_conversation[j]["content"] + decoded_tokens[j//2][1][i]})
+                conversation.append({"role": "user", "content": decoded_tokens[j//2][0][i] + content + decoded_tokens[j//2][1][i]})
             else:
-                conversation.append({"role": "assistant", "content": clean_conversation[j]["content"]})
+                conversation.append({"role": "assistant", "content": content})
         try:
             recon_ids = prepare_conversation(tokenizer, clean_conversation, conversation)
         except TokenMergeError:
             continue
 
-        if all([torch.equal(ids[j][0][i], recon_ids[j][1]) and torch.equal(ids[j][1][i], recon_ids[j][3])  for j in range(len(recon_ids))]):
+        prefix_match = all([torch.equal(ids[j][0][i] if ids[j][0] is not None else torch.empty(0), recon_ids[j][1]) for j in range(len(recon_ids))])
+        suffix_match = all([torch.equal(ids[j][1][i] if ids[j][1] is not None else torch.empty(0), recon_ids[j][3]) for j in range(len(recon_ids))])
+        if prefix_match and suffix_match:
             retain_idx.append(i)
 
     if not retain_idx:

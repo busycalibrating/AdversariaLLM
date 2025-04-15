@@ -1,0 +1,1 @@
+Conversation = list[dict[str, str]]

@@ -1,5 +1,4 @@
 import os
-from dataclasses import dataclass
 from datetime import datetime
 
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"  # determinism
@@ -10,23 +9,12 @@ import torch
 from omegaconf import DictConfig, OmegaConf
 
 from src.attacks import Attack
-from src.dataset import Dataset
+from src.dataset import PromptDataset
 from src.errors import print_exceptions
-from src.io_utils import load_model_and_tokenizer, log_attack
+from src.io_utils import load_model_and_tokenizer, log_attack, RunConfig
 
 torch.use_deterministic_algorithms(True, warn_only=True)
 torch.backends.cuda.matmul.allow_tf32 = True
-
-
-@dataclass
-class RunConfig:
-    model: str
-    dataset: str
-    attack: str
-    model_params: dict
-    dataset_params: dict
-    attack_params: dict
-    config: dict
 
 
 def should_run(cfg: DictConfig, name: str | None) -> list[tuple[str, DictConfig]]:
@@ -49,13 +37,13 @@ def main(cfg: DictConfig) -> None:
     attacks_to_run = should_run(cfg.attacks, cfg.attack_name)
 
     for model_name, model_params in models_to_run:
-        logging.info(f"Target: {model_name}\n{OmegaConf.to_yaml(model_params)}")
+        logging.info(f"Target: {model_name}\n{OmegaConf.to_yaml(model_params, resolve=True)}")
         model, tokenizer = load_model_and_tokenizer(model_params)
         for dataset_name, dataset_params in datasets_to_run:
-            logging.info(f"Dataset: {dataset_name}\n{OmegaConf.to_yaml(dataset_params)}")
-            dataset = Dataset.from_name(dataset_name)(dataset_params)
+            logging.info(f"Dataset: {dataset_name}\n{OmegaConf.to_yaml(dataset_params, resolve=True)}")
+            dataset = PromptDataset.from_name(dataset_name)(dataset_params)
             for attack_name, attack_params in attacks_to_run:
-                logging.info(f"Attack: {attack_name}\n{OmegaConf.to_yaml(attack_params)}")
+                logging.info(f"Attack: {attack_name}\n{OmegaConf.to_yaml(attack_params, resolve=True)}")
                 attack = Attack.from_name(attack_name)(attack_params)
 
                 results = attack.run(model, tokenizer, dataset)
@@ -67,7 +55,6 @@ def main(cfg: DictConfig) -> None:
                     model_params,
                     dataset_params,
                     attack_params,
-                    cfg,
                 )
                 log_attack(run_config, results, log_file_path)
 

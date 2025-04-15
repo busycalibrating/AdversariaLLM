@@ -1,35 +1,79 @@
-import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-import numpy as np
-import torch
 import transformers
-from torch.utils.data import Dataset
+from beartype import beartype
+from beartype.typing import Literal, Optional
 
-
-def set_seed(seed):
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
+from src.dataset import PromptDataset
+from src.types import Conversation
 
 
 @dataclass
-class AttackResult:
-    """A class to store the attack results for all instances in a datasets."""
+class GenerationConfig:
+    generate_completions: Literal["all", "best", "last"] = "all"
+    max_new_tokens: int = 256
+    temperature: float = 0.0
+    top_p: float = 1.0
+    top_k: int = 0
+    num_return_sequences: int = 1
 
-    attacks: list[list[str]]
-    losses: list[list[float]]
-    prompts: list[str]
-    completions: list[list[int | None]] = None
-    times: list[list[float]] = None
+
+@beartype
+@dataclass
+class AttackStepResult:
+    """Stores results for a single step of an attack algorithm."""
+    step: int  # The step number (e.g., iteration)
+
+    # The model's completion(s) in response to model_input. We use a list to store
+    # multiple completions in case we are using distributional evaluation.
+    model_completions: list[str]
+
+    # Judge scores - should be a dict of judge name -> list[p(harmful|completion1), p(harmful|completion2), ...]
+    jailbreak_scores: dict[str, list[float]] = field(default_factory=dict)
+    # Time taken specifically for this step.
+    time_taken: float = 0.0
+
+    # Optional fields, depending on the attack type
+    # ---
+    # Loss computed at this step (e.g., target loss for GCG)
+    loss: Optional[float] = None
+
+    # Sometimes we cannot provide these: (e.g., for embedding attacks)
+    # The full input presented to the model at this step (e.g., original_prompt + optimized_suffix)
+    model_input: Optional[Conversation] = None
+    # Actual unrolled input tokens (i.e. including the system prompt, if present)
+    model_input_tokens: Optional[list[int]] = None
+
+
+@beartype
+@dataclass
+class SingleAttackRunResult:
+    """Stores the results of running a single attack on a single conversation."""
+    # The original multi-turn conversation from the dataset
+    original_prompt: Conversation
+
+    # Results for each step of the attack
+    steps: list[AttackStepResult] = field(default_factory=list)
+
+    # Total time taken for this entire attack run on a **single instance**
+    total_time: float = 0.0
+
+
+@beartype
+@dataclass
+class AttackResult:
+    """Stores the results for all attack runs across a dataset.
+
+    Contains a list of SingleAttackRunResult objects, one for each instance
+    in the dataset processed.
+    """
+    runs: list[SingleAttackRunResult] = field(default_factory=list)
 
 
 class Attack:
     def __init__(self, config):
         self.config = config
-        set_seed(config.seed)
+        transformers.set_seed(config.seed)
 
     @classmethod
     def from_name(cls, name):
@@ -94,6 +138,6 @@ class Attack:
         self,
         model: transformers.AutoModelForCausalLM,
         tokenizer: transformers.PreTrainedTokenizerBase,
-        dataset: Dataset,
+        dataset: PromptDataset,
     ) -> AttackResult:
         raise NotImplementedError
