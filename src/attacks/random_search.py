@@ -288,17 +288,14 @@ class RandomSearchAttack(Attack):
         # Flatten the per-example, per-step token lists for batch generation
         flat_token_list = [token_tensor for example_tokens in all_step_token_ids for token_tensor in example_tokens]
         outputs = []
-        if flat_token_list:
-            outputs = generate_ragged_batched(
-                model, tokenizer, token_list=flat_token_list,
-                initial_batch_size=self.batch_size,
-                max_new_tokens=self.config.generation_config.max_new_tokens,
-                temperature=self.config.generation_config.temperature,
-                top_p=self.config.generation_config.top_p, top_k=self.config.generation_config.top_k,
-                num_return_sequences=self.config.generation_config.num_return_sequences
-            )
-        else:
-            print("Warning: No valid token sequences to generate from.")
+        outputs = generate_ragged_batched(
+            model, tokenizer, token_list=flat_token_list,
+            initial_batch_size=self.batch_size,
+            max_new_tokens=self.config.generation_config.max_new_tokens,
+            temperature=self.config.generation_config.temperature,
+            top_p=self.config.generation_config.top_p, top_k=self.config.generation_config.top_k,
+            num_return_sequences=self.config.generation_config.num_return_sequences
+        )
 
         # --- Collate Results ---
         runs = []

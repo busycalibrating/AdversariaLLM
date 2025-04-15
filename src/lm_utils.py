@@ -2,6 +2,7 @@ import copy
 import logging
 import random
 import string
+import sys
 from functools import lru_cache
 from typing import Callable, Literal
 
@@ -9,10 +10,10 @@ import torch
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm
-from transformers import DynamicCache, PreTrainedTokenizerBase, PreTrainedModel
+from transformers import DynamicCache, PreTrainedModel, PreTrainedTokenizerBase
 
-from src.io_utils import free_vram
 from src.attacks.attack import Conversation
+from src.io_utils import free_vram
 
 
 @torch.no_grad()
@@ -101,7 +102,7 @@ def with_max_batchsize(function: Callable, *inputs, initial_batch_size: int | No
     if initial_batch_size is None:
         initial_batch_size = input_length
     batch_size = min(initial_batch_size, input_length)
-    pbar = tqdm(total=input_length, desc=f"Running function b={batch_size}") if verbose else None
+    pbar = tqdm(total=input_length, desc=f"Running function b={batch_size}", file=sys.stdout) if verbose else None
 
     while i < input_length:
         try:
@@ -222,6 +223,8 @@ def generate_ragged(
         logging.warning("KV-cache not implemented for Gemma 2. Disabling cache.")
         use_cache = False
 
+    B = len(embedding_list)
+
     def sample_next_token(logits: torch.Tensor) -> torch.Tensor:
         if temperature > 0.0:
             logits = logits / temperature
@@ -234,7 +237,12 @@ def generate_ragged(
             next_tokens = logits.argmax(dim=-1)
         return next_tokens
 
-    B = len(embedding_list)
+    if num_return_sequences == 0:
+        if return_tokens:
+            return torch.zeros((B, 0, max_new_tokens))
+        else:
+            return [[] for _ in range(B)]
+
     all_tokens = []
     for i in range(num_return_sequences):
         tokens = torch.full((B, max_new_tokens), tokenizer.pad_token_id)
@@ -694,6 +702,8 @@ def prepare_conversation(
         else:
             raise TokenMergeError(
                 "There are tokenizer merges across prompt and attack, cannot split.\n"
+                + f"Prompt: {conversation[:i]}\n"
+                + f"Attack: {conversation_opt[:i]}\n"
                 + f"{tokenized_clean}\n"
                 + f"{tokenized_attack}"
             )

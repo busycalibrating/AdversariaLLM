@@ -7,9 +7,12 @@ from dataclasses import asdict, dataclass
 
 import torch
 from omegaconf import OmegaConf
+from transformers.utils.logging import disable_progress_bar
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from src.attacks import AttackResult
+
+disable_progress_bar()  # disable progress bar for model loading
 
 
 def load_model_and_tokenizer(model_params):
@@ -24,9 +27,7 @@ def load_model_and_tokenizer(model_params):
                 bnb_4bit_compute_dtype=torch.bfloat16,
             )
         elif model_params.dtype == "int8":
-            quantization_config = BitsAndBytesConfig(
-                load_in_8bit=True,
-            )
+            quantization_config = BitsAndBytesConfig(load_in_8bit=True)
         else:
             raise ValueError(f"Unknown dtype {model_params.dtype}")
 
@@ -89,7 +90,7 @@ def load_model_and_tokenizer(model_params):
         case path if 'zephyr' in path:
             tokenizer.model_max_length = 32768
     if tokenizer.model_max_length > 262144:
-        raise ValueError(f"Model max length {tokenizer.model_max_length} is too high")
+        raise ValueError(f"Model max length {tokenizer.model_max_length} is probably too large.")
 
     if model_params.chat_template is not None:
         tokenizer.chat_template = load_chat_template(model_params.chat_template)
@@ -111,13 +112,6 @@ def free_vram():
         gc.collect()
         torch.cuda.empty_cache()
 
-
-def _is_compactable_list(lst):
-    """Checks if a list should be formatted compactly."""
-    if not isinstance(lst, list):
-        return False
-    # Check if all elements are of simple, primitive types
-    return all(isinstance(x, (int, float, str, bool, type(None))) for x in lst)
 
 class CompactJSONEncoder(json.JSONEncoder):
     """A JSON Encoder that puts small containers on single lines."""

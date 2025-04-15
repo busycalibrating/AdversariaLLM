@@ -1,7 +1,8 @@
 """Single file implementation of the AutoDAN attack [https://arxiv.org/abs/2310.04451]"""
-
+import logging
 import random
 import re
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -86,7 +87,6 @@ class AutoDANAttack(Attack):
         for conversation in dataset:
             assert len(conversation) == 2, "Current AutoDAN only supports single-turn conversations"
             msg = conversation[0]["content"]
-            target = conversation[1]["content"]
 
             # ==== Early stopping vars =====
             previous_loss = None
@@ -99,7 +99,7 @@ class AutoDANAttack(Attack):
             current_loss = None
             t0 = time.time()
 
-            for step in (pbar := trange(self.config.num_steps)):
+            for _ in (pbar := trange(self.config.num_steps, file=sys.stdout)):
                 tokens = []
                 for attack_prefix in optim_strings:
                     attack_conversation = [
@@ -164,6 +164,7 @@ class AutoDANAttack(Attack):
                 num_return_sequences=self.config.generation_config.num_return_sequences,
                 use_cache=True
             )
+            logging.info("Generated completions")
 
             # Create AttackStepResult objects for each completion
             step_results = []

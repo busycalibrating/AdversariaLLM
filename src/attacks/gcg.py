@@ -18,7 +18,10 @@ Fixes several issues in nanoGCG, mostly re. Llama-2 & tokenization
 """
 import gc
 import logging
+import random
+import sys
 import time
+
 from dataclasses import dataclass, field
 from functools import partial
 from typing import Literal
@@ -190,7 +193,7 @@ class GCGAttack(Attack):
             optim_strings = []
             self.stop_flag = False
             current_loss = buffer.get_lowest_loss()
-            for _ in (pbar := trange(self.config.num_steps)):
+            for _ in (pbar := trange(self.config.num_steps, file=sys.stdout)):
                 token_selection.target_ids = self.target_ids[:, :self.target_length]
                 token_selection.target_embeds = self.target_embeds[:, :self.target_length]
                 # Compute the token gradient
@@ -490,31 +493,22 @@ class SubstitutionSelectionStrategy:
             sampled_ids : Tensor, shape = (search_width, n_optim_ids)
                 sampled token ids
         """
-        # n_smoothing = 64
-        # grad_ids = ids.clone().unsqueeze(0).repeat(n_smoothing, 1)
-        # allowed_ids = [i for i in range(self.target_embeds.size(-1)) if i not in not_allowed_ids]
-        # import random
-        # for i in range(1, n_smoothing):
-        #     random_idx = random.choice(allowed_ids)
-        #     random_pos = torch.randint(0, grad_ids.shape[1], (1,))
-        #     grad_ids[i, 0] = random_idx
-        # print(grad_ids)
-        # grad = self.compute_token_gradient(grad_ids, model)
-        # # Calculate cosine similarity between the first gradient and all others
-        # first_grad = grad[0].view(-1)  # Flatten the first gradient
-        # cosine_similarities = []
-
-        # for i in range(1, n_smoothing):
-        #     other_grad = grad[i].view(-1)  # Flatten the current gradient
-        #     # Calculate cosine similarity
-        #     cos_sim = torch.nn.functional.cosine_similarity(first_grad.unsqueeze(0), other_grad.unsqueeze(0), dim=1)
-        #     cosine_similarities.append(cos_sim.item())
-
-        # print("Cosine similarities between first gradient and others:")
-        # print(cosine_similarities)
-        # grad = grad.mean(0)  # (n_optim_ids, vocab_size)
-
         grad = self.compute_token_gradient(ids.unsqueeze(0), model).squeeze(0)  # (n_optim_ids, vocab_size)
+
+        n_smoothing = self.config.grad_smoothing
+        allowed_ids = [i for i in range(self.target_embeds.size(-1)) if i not in not_allowed_ids]
+
+        for i in range(1, n_smoothing):
+            random_idx = random.choice(allowed_ids)
+            grad_ids = ids.clone().unsqueeze(0)
+            random_pos = torch.randint(0, grad_ids.shape[1], (1,))
+            grad_ids[0, random_pos] = random_idx
+            grad = self.compute_token_gradient(grad_ids, model)
+            grad = grad.sum(0)  # (n_optim_ids, vocab_size)
+            grad += grad
+        grad = grad / n_smoothing  # (n_optim_ids, vocab_size)
+
+        # grad = self.compute_token_gradient(ids.unsqueeze(0), model).squeeze(0)  # (n_optim_ids, vocab_size)
         n_optim_tokens = len(ids)
         original_ids = ids.repeat(search_width, 1)
 
