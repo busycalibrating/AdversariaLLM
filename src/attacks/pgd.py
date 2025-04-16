@@ -98,6 +98,8 @@ class PGDAttack(Attack):
         else:
             self.embedding_scale = 1.0
         self.lr = self.embedding_scale * self.config.alpha
+        if self.config.normalize_gradient:
+            self.lr /= model.get_input_embeddings().weight.size(-1) ** 0.5
         logging.info(f"Embedding scale set to {self.embedding_scale} based on projection={self.config.projection}")
 
     def _initialize_optimizer(self, params):
@@ -214,12 +216,11 @@ class PGDAttack(Attack):
         batch_times = [[] for _ in range(B)]
 
         t_start = time.time()
-        pbar = trange(self.config.num_steps, desc=f"Running PGD Attack Loop on {B} conversations", file=sys.stdout, leave=False)
+        pbar = trange(self.config.num_steps, desc=f"Running PGD Attack Loop on {B} conversations", file=sys.stdout)
         perturbed_embeddings_or_one_hot.requires_grad = True
         optimizer = self._initialize_optimizer([perturbed_embeddings_or_one_hot])
 
         for step in pbar:
-            optimizer.zero_grad()
             perturbed_embeddings = self._maybe_convert_to_embeddings(perturbed_embeddings_or_one_hot, model)
             outputs = model(
                 inputs_embeds=perturbed_embeddings,
@@ -242,7 +243,7 @@ class PGDAttack(Attack):
             grad = perturbed_embeddings_or_one_hot.grad
 
             with torch.no_grad():
-                grad = self._modify_gradient(grad, attack_masks_batch, disallowed_ids, self.config.normalize_gradient)
+                grad = self._modify_gradient(grad, attack_masks_batch, disallowed_ids)
                 perturbed_embeddings_or_one_hot = self._perform_optimizer_step(
                     optimizer,perturbed_embeddings_or_one_hot, original_embeddings, grad, attack_masks_batch
                 )
@@ -258,8 +259,8 @@ class PGDAttack(Attack):
                 batch_perturbed_embeddings_list[i].append(pert_emb_cpu)
 
             pbar.set_postfix({"loss": loss.mean().item(), "kl_div": kl_div_loss.item() if isinstance(kl_div_loss, torch.Tensor) else kl_div_loss})
-            model.zero_grad() # Zero grad inside loop
-            if original_model:
+            model.zero_grad()
+            if original_model is not None:
                  original_model.zero_grad()
 
         # Generation after all steps
@@ -398,7 +399,7 @@ class PGDAttack(Attack):
              # Construct input for benign prompt check
              benign_check_inputs = torch.cat([
                  benign_ref_data["pre_embeds"],
-                 benign_ref_data["prompt_embeds"], # Benign prompt
+                 benign_ref_data["prompt_embeds"],
                  attack_embeds_batch,             # Inserted attack
                  benign_ref_data["post_embeds"],
                  benign_ref_data["target_embeds"]
@@ -410,19 +411,17 @@ class PGDAttack(Attack):
 
              kl_div_loss += F.kl_div(
                  F.log_softmax(benign_check_logits_target, dim=-1),
-                 F.softmax(benign_ref_data["ref_logits"].detach(), dim=-1), # Use precomputed ref logits
+                 F.softmax(benign_ref_data["ref_logits"].detach(), dim=-1),
                  reduction="batchmean",
                  log_target=False
-             ) * self.config.tie_logits # Use the same tying factor?
+             ) * self.config.tie_logits  # Use the same tying factor?
 
         return kl_div_loss
 
-    def _modify_gradient(self, grad, attack_mask, disallowed_ids, normalize_gradient):
+    def _modify_gradient(self, grad, attack_mask, disallowed_ids):
         if self.config.attack_space == "one-hot":
             grad[..., disallowed_ids] = 0
         grad[~attack_mask] = 0
-        if normalize_gradient:
-            grad /= grad.size(-1) ** 0.5
         return grad
 
     @torch.no_grad()
@@ -431,11 +430,10 @@ class PGDAttack(Attack):
         # Project delta back into epsilon ball
         if self.config.attack_space == "embedding":
             delta = perturbed_embeds - original_embeds
-            delta = delta * attack_mask.unsqueeze(-1) # Ensure delta is only non-zero for attack tokens
             if self.config.projection == "l2":
-                perturbed_embeds.data = perturbed_embeds + self.project_l2(delta)
+                perturbed_embeds.data = original_embeds + self.project_l2(delta)
             elif self.config.projection == "l1":
-                perturbed_embeds.data = perturbed_embeds + self.project_l1(delta)
+                perturbed_embeds.data = original_embeds + self.project_l1(delta)
             else:
                 raise ValueError(f"Unknown projection {self.config.projection}")
             return perturbed_embeds
@@ -455,6 +453,7 @@ class PGDAttack(Attack):
         eps_normalized = self.config.epsilon * self.embedding_scale
         mask = norm > eps_normalized
         scaling_factor = torch.where(mask, eps_normalized / (norm + 1e-9), torch.ones_like(norm))
+        print(f"scaling_factor: {scaling_factor.unique()}")
         return delta * scaling_factor
 
     def project_l1(self, delta):
