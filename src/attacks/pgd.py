@@ -182,7 +182,7 @@ class PGDAttack(Attack):
         attack_masks_batch: torch.Tensor,
         target_masks_batch: torch.Tensor
     ) -> list[SingleAttackRunResult]:
-
+        t_start = time.time()
         device = model.device
         B, L = x_batch.shape
         disallowed_ids = get_disallowed_ids(tokenizer, allow_non_ascii=False, allow_special=False)
@@ -221,6 +221,7 @@ class PGDAttack(Attack):
         optimizer = self._initialize_optimizer([perturbed_embeddings_or_one_hot])
 
         for step in pbar:
+            t0 = time.time()
             perturbed_embeddings = self._maybe_convert_to_embeddings(perturbed_embeddings_or_one_hot, model)
             outputs = model(
                 inputs_embeds=perturbed_embeddings,
@@ -247,21 +248,20 @@ class PGDAttack(Attack):
                 perturbed_embeddings_or_one_hot = self._perform_optimizer_step(
                     optimizer,perturbed_embeddings_or_one_hot, original_embeddings, grad, attack_masks_batch
                 )
+            model.zero_grad()
+            pbar.set_postfix({"loss": loss.mean().item(), "kl_div": kl_div_loss.item() if isinstance(kl_div_loss, torch.Tensor) else kl_div_loss})
+            if original_model is not None:
+                 original_model.zero_grad()
 
-            current_time = time.time() - t_start
+            current_time = time.time() - t0
             step_losses = loss.detach().tolist()
             for i in range(B):
                 batch_times[i].append(current_time)
                 batch_losses[i].append(step_losses[i])
                 # Storing only attack embeddings might be more memory efficient if needed later
                 # For now, storing relevant segment as per original logic
-                pert_emb_cpu = self._select_relevant_embeddings(perturbed_embeddings_or_one_hot[i], target_masks_batch[i])
+                pert_emb_cpu = self._select_embeddings_for_generation(perturbed_embeddings_or_one_hot[i], target_masks_batch[i])
                 batch_perturbed_embeddings_list[i].append(pert_emb_cpu)
-
-            pbar.set_postfix({"loss": loss.mean().item(), "kl_div": kl_div_loss.item() if isinstance(kl_div_loss, torch.Tensor) else kl_div_loss})
-            model.zero_grad()
-            if original_model is not None:
-                 original_model.zero_grad()
 
         # Generation after all steps
         final_perturbed_embeddings_flat = []
@@ -290,6 +290,7 @@ class PGDAttack(Attack):
         logging.info(f"Generated {len(outputs)}x{self.config.generation_config.num_return_sequences} completions")
 
         # Structure results
+        t_end = time.time()
         runs = []
         for i in range(B):
              # Create step results, but only the last one has meaningful completions here
@@ -305,7 +306,7 @@ class PGDAttack(Attack):
              runs.append(SingleAttackRunResult(
                  original_prompt=original_conversations_batch[i],
                  steps=steps,
-                 total_time=batch_times[i][-1]
+                 total_time=(t_end - t_start) / B
              ))
         return runs
 
@@ -453,7 +454,6 @@ class PGDAttack(Attack):
         eps_normalized = self.config.epsilon * self.embedding_scale
         mask = norm > eps_normalized
         scaling_factor = torch.where(mask, eps_normalized / (norm + 1e-9), torch.ones_like(norm))
-        print(f"scaling_factor: {scaling_factor.unique()}")
         return delta * scaling_factor
 
     def project_l1(self, delta):
@@ -548,7 +548,7 @@ class PGDAttack(Attack):
 
 
     @staticmethod
-    def _select_relevant_embeddings(embeddings: torch.Tensor, target_mask: torch.Tensor) -> torch.Tensor:
+    def _select_embeddings_for_generation(embeddings: torch.Tensor, target_mask: torch.Tensor) -> torch.Tensor:
         # Selects embeddings up to the start of the target sequence
         # target_mask indicates target tokens. We want tokens *before* the first target token.
         # Rolling makes the mask True for the token *before* the target starts.

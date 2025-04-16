@@ -86,12 +86,13 @@ class AmpleGCGAttack(Attack):
             logging.info("Generated completions")
             for i in range(len(attack_conversations)):
                 attack_conversations[i][-1]["content"] = ""
+            t1 = time.time()
             step_results = [
                 AttackStepResult(
                     step=i,
                     model_completions=batch_completions[i],
                     jailbreak_scores={},
-                    time_taken=time.time() - t0,
+                    time_taken=(t1 - t0) / len(batch_attacks),
                     loss=batch_losses[i],
                     model_input=attack_conversations[i],
                     model_input_tokens=token_list[i].tolist()
@@ -101,7 +102,7 @@ class AmpleGCGAttack(Attack):
             single_attack_run_result = SingleAttackRunResult(
                 original_prompt=conversation,
                 steps=step_results,
-                total_time=time.time() - t0
+                total_time=t1 - t0
             )
             runs.append(single_attack_run_result)
             logging.info("Created single attack run result")

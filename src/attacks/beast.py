@@ -56,7 +56,7 @@ class BEASTAttack(Attack):
             AttackResult: Holds all data about the generated attacks, losses, prompts,
                 completions, and execution times.
         """
-        attack_start_time = time.time()
+        t_start = time.time()
         attacks, losses, times, prompts, token_list = [], [], [], [], []
 
         # Get disallowed token IDs once
@@ -67,6 +67,7 @@ class BEASTAttack(Attack):
         ).to(model.device)
 
         for conversation in dataset:
+            t0 = time.time()
             assert len(conversation) == 2, "Currently BEAST only supports single-turn conversations"
             attack: Conversation = [
                 {"role": "user", "content": conversation[0]["content"] + self.config.optim_str_init},
@@ -92,10 +93,6 @@ class BEASTAttack(Attack):
                 target_tokens,
             )[0]
 
-            per_sample_attacks = [""]
-            per_sample_times = [time.time() - attack_start_time]
-            per_sample_losses = [torch.log(torch.tensor(initial_ppl)).item()]
-
             # Initial sampling
             beams = self.sample(
                 model,
@@ -105,8 +102,13 @@ class BEASTAttack(Attack):
                 attack_token_list=[attack_tokens],
                 post_tokens=post_tokens,
             )[0]  # shape is (k1,)
+            per_sample_attacks = [""]
+            per_sample_times = [time.time() - t0]
+            per_sample_losses = [torch.log(torch.tensor(initial_ppl)).item()]
+
             beams: list[torch.LongTensor] = [torch.LongTensor([]) for b in beams]
             for i in (pbar := trange(1, self.config.num_steps)):
+                t1 = time.time()
                 # Get next K1 x K2 candidates
                 next_tokens = self.sample(
                     model,
@@ -145,7 +147,7 @@ class BEASTAttack(Attack):
                 per_sample_attacks.append(best_suffix)
                 per_sample_losses.append(best_loss)
                 pbar.set_postfix({"loss": best_loss, "attack": best_suffix})
-                per_sample_times.append(time.time() - attack_start_time)
+                per_sample_times.append(time.time() - t1)
 
             losses.append(per_sample_losses)
             times.append(per_sample_times)
@@ -178,6 +180,7 @@ class BEASTAttack(Attack):
         )  # (B*num_steps, num_return_sequences, T)
 
         # Aggregate results
+        t_final = time.time()
         runs = []
         for i in range(len(dataset)):
             step_results = []
@@ -194,7 +197,7 @@ class BEASTAttack(Attack):
             run = SingleAttackRunResult(
                 original_prompt=prompts[i],
                 steps=step_results,
-                total_time=time.time() - attack_start_time
+                total_time=(t_final - t_start) / len(prompts)
             )
             runs.append(run)
 

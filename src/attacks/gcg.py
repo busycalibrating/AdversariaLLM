@@ -264,11 +264,12 @@ class GCGAttack(Attack):
                 num_return_sequences=self.config.generation_config.num_return_sequences,
             )  # (N_steps, N_return_sequences, T)
             steps = []
+            t1 = time.time()
             for i in range(len(optim_strings)):
                 step = AttackStepResult(
                     step=i,
                     model_completions=batch_completions[i],
-                    time_taken=(time.time() - t0) / len(optim_strings),
+                    time_taken=times[i],
                     loss=losses[i],
                     model_input=attack_conversations[i],
                     model_input_tokens=token_list[i].tolist(),
@@ -278,7 +279,7 @@ class GCGAttack(Attack):
             run = SingleAttackRunResult(
                 original_prompt=conversation,
                 steps=steps,
-                total_time=time.time() - t0,
+                total_time=t1 - t0,
             )
             runs.append(run)
         return AttackResult(runs=runs)
@@ -494,22 +495,36 @@ class SubstitutionSelectionStrategy:
             sampled_ids : Tensor, shape = (search_width, n_optim_ids)
                 sampled token ids
         """
+        # Initial gradient computation
         grad = self.compute_token_gradient(ids.unsqueeze(0), model).squeeze(0)  # (n_optim_ids, vocab_size)
 
         n_smoothing = self.config.grad_smoothing
-        allowed_ids = [i for i in range(self.target_embeds.size(-1)) if i not in not_allowed_ids]
+        if n_smoothing > 1:
+            allowed_ids = [i for i in range(self.target_embeds.size(-1)) if i not in not_allowed_ids]
 
-        for i in range(1, n_smoothing):
-            random_idx = random.choice(allowed_ids)
-            grad_ids = ids.clone().unsqueeze(0)
-            random_pos = torch.randint(0, grad_ids.shape[1], (1,))
-            grad_ids[0, random_pos] = random_idx
-            grad = self.compute_token_gradient(grad_ids, model)
-            grad = grad.sum(0)  # (n_optim_ids, vocab_size)
-            grad += grad
-        grad = grad / n_smoothing  # (n_optim_ids, vocab_size)
+            # Get batch size for gradient smoothing
+            batch_size = 64
+            total_samples = n_smoothing - 1
 
-        # grad = self.compute_token_gradient(ids.unsqueeze(0), model).squeeze(0)  # (n_optim_ids, vocab_size)
+            all_grads = grad.clone()
+
+            # Process in batches
+            for batch_start in range(0, total_samples, batch_size):
+                current_batch_size = min(batch_size, total_samples - batch_start)
+
+                grad_ids_batch = ids.clone().unsqueeze(0).repeat(current_batch_size, 1)  # (batch_size, n_optim_ids)
+
+                random_positions = torch.randint(0, grad_ids_batch.shape[1], (current_batch_size, 1), device=ids.device)
+                random_indices = torch.tensor([random.choice(allowed_ids) for _ in range(current_batch_size)],
+                                             device=ids.device).unsqueeze(1)
+
+                for i in range(current_batch_size):
+                    grad_ids_batch[i, random_positions[i]] = random_indices[i]
+
+                batch_grads = self.compute_token_gradient(grad_ids_batch, model)
+                all_grads += batch_grads.sum(0)
+            grad = all_grads / n_smoothing
+
         n_optim_tokens = len(ids)
         original_ids = ids.repeat(search_width, 1)
 

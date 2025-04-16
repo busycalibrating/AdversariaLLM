@@ -49,7 +49,7 @@ class DirectAttack(Attack):
         -------
             AttackResult: The result of the attack
         """
-        t_start_batch = time.time()
+        t0 = time.time()
 
         # --- 1. Prepare Inputs ---
         original_conversations: list[Conversation] = []
@@ -121,10 +121,7 @@ class DirectAttack(Attack):
         t_end_gen = time.time()
         gen_time_total = t_end_gen - t_start_gen
 
-        t_end_batch = time.time()
-        total_batch_time = t_end_batch - t_start_batch
-        time_per_instance = total_batch_time / B
-
+        t1 = time.time()
         # --- 4. Assemble Results ---
         runs = []
         for i in range(B):
@@ -141,7 +138,7 @@ class DirectAttack(Attack):
             step_result = AttackStepResult(
                 step=0,
                 model_completions=model_completions,
-                time_taken=time_per_instance,
+                time_taken=(t1 - t0) / B,
                 loss=loss,
                 model_input=model_input,
                 model_input_tokens=model_input_tokens,
@@ -151,13 +148,12 @@ class DirectAttack(Attack):
             run_result = SingleAttackRunResult(
                 original_prompt=original_prompt,
                 steps=[step_result],
-                total_time=time_per_instance,  # Total time for this run is the instance time
+                total_time=t1 - t0,  # Total time for this run is the instance time
             )
 
             runs.append(run_result)
 
-        logging.info(f"Direct attack run completed. Total Time: {total_batch_time:.2f}s, "
-                     f"Avg Time/Instance: {time_per_instance:.2f}s, "
+        logging.info(f"Direct attack run completed. Total Time: {t1 - t0:.2f}s, "
                      f"Generation Time: {gen_time_total:.2f}s, Loss Calc Time: {loss_time_total:.2f}s")
 
         return AttackResult(runs=runs)

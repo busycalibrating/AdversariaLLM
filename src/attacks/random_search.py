@@ -255,35 +255,6 @@ class RandomSearchAttack(Attack):
 
             # --- Logging and Plotting ---
             pbar.set_postfix({"loss": f"{current_mean_loss:.4f}", "best_loss": f"{best_losses.mean().item():.4f}"})
-            if (step_num+1) % 100 == 0:
-                import matplotlib.pyplot as plt
-                plt.figure(figsize=(12, 8))
-
-                # Plot losses over time
-                plt.subplot(3, 1, 1)
-                plt.scatter(range(len(mean_losses_history)), mean_losses_history, s=1, alpha=0.2, label='One-Hot Loss')
-                plt.xlabel('Step')
-                plt.ylabel('Loss')
-                plt.title('Loss vs. Training Step')
-                plt.legend()
-                plt.grid(True)
-
-                plt.subplot(3, 1, 3)
-                ax1 = plt.gca()
-                ax2 = ax1.twinx()
-                ax2.plot(mean_diffs_history, 'r-', label='Edit Distance [in one-hot space]')
-                ax2.set_ylabel('Fraction Changed', color='r')
-                ax2.tick_params(axis='y', labelcolor='r')
-
-                ax1.set_xlabel('Step')
-                ax1.set_title('One-Hot Token Changes per Step')
-                ax1.grid(True)
-
-                plt.legend()
-
-                plt.tight_layout()
-                plt.savefig('loss_analysis.pdf')
-                plt.close()
 
         # --- Generation Step ---
         # Flatten the per-example, per-step token lists for batch generation
@@ -301,6 +272,7 @@ class RandomSearchAttack(Attack):
         # --- Collate Results ---
         runs = []
         num_steps = self.config.num_steps
+        t_end = time.time()
 
         for i in range(num_examples):
             steps_for_prompt = []
@@ -319,7 +291,7 @@ class RandomSearchAttack(Attack):
             run = SingleAttackRunResult(
                 original_prompt=original_conversations_batch[i],
                 steps=steps_for_prompt,
-                total_time=(time.time() - t0) / num_examples
+                total_time=(t_end - t0) / num_examples
             )
             runs.append(run)
         return runs

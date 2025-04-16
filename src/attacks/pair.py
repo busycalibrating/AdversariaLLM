@@ -112,8 +112,8 @@ class PAIRAttack(Attack):
         times = []
         token_list: list[list[int]] = []
         # Begin PAIR
+        t1 = time.time()
         for _ in trange(self.config.num_steps):
-            t1 = time.time()
             # Get adversarial prompts and improvement
             extracted_attack_list = attack_lm.get_attack(
                 convs_list, processed_response_list
@@ -129,6 +129,7 @@ class PAIRAttack(Attack):
 
             # Get target responses
             times.append(time.time() - t1)
+            t1 = time.time()
             target_response_list, model_input_tokens = target_lm.get_response(adv_prompt_list)
             token_list.extend(model_input_tokens)
             completions.append(target_response_list)
@@ -165,7 +166,7 @@ class PAIRAttack(Attack):
             step = AttackStepResult(
                 step=i,
                 model_completions=completions[i],
-                time_taken=time.time() - t0,
+                time_taken=times[i],
                 loss=None,
                 model_input=attacks[i],
                 model_input_tokens=token_list[i].tolist(),
@@ -174,7 +175,7 @@ class PAIRAttack(Attack):
         run = SingleAttackRunResult(
             original_prompt=conversation,
             steps=steps,
-            total_time=time.time() - t0
+            total_time=t1 - t0
         )
         return run
 

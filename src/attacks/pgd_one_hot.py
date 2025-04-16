@@ -146,6 +146,7 @@ class PGDOneHotAttack(Attack):
         attack_masks_batch,
         target_masks_batch
     ) -> list[SingleAttackRunResult]:
+        t_start = time.time()
         disallowed_ids = get_disallowed_ids(tokenizer, allow_non_ascii=False, allow_special=False)
         B = x_batch.size(0)
         losses = [[] for _ in range(B)]
@@ -203,7 +204,6 @@ class PGDOneHotAttack(Attack):
         else:
             raise ValueError(f"Invalid learning rate scheduler: {self.config.lr_scheduler.type}")
 
-        t0 = time.time()
         pbar = trange(self.config.num_steps, postfix={"loss": "N/A"})
 
         # Lists to store losses for plotting
@@ -216,6 +216,7 @@ class PGDOneHotAttack(Attack):
         best_perturbed_one_hots = last_one_hots.clone().detach()
         best_loss = float('inf')
         for _step in pbar:
+            t0 = time.time()
             optimizer.zero_grad()
             # Reinitialize optimizer and randomize perturbed_one_hots every 100 steps
             if _step > 0 and _step % self.config.restart_every == 0:
@@ -411,7 +412,7 @@ class PGDOneHotAttack(Attack):
             num_return_sequences=self.config.generation_config.num_return_sequences,
         )
         logging.info(f"Generated {len(outputs)}x{len(outputs[0])} completions")
-
+        t_end = time.time()
         runs = []
         for i in range(B):
             steps = []
@@ -427,7 +428,7 @@ class PGDOneHotAttack(Attack):
             runs.append(SingleAttackRunResult(
                 original_prompt=original_conversations_batch[i],
                 steps=steps,
-                total_time=times[i][-1]
+                total_time=(t_end - t_start) / B
             ))
         return runs
 
