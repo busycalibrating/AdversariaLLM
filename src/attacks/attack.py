@@ -19,7 +19,7 @@ class GenerationConfig:
 
 
 @beartype
-@dataclass
+@dataclass(kw_only=True)
 class AttackStepResult:
     """Stores results for a single step of an attack algorithm."""
     step: int  # The step number (e.g., iteration)
