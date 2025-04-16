@@ -42,6 +42,36 @@ redflag-tokens/mistralv3-rf:
   #   merge_lora: True
   #   base_name: meta-llama/Llama-3.2-3B-Instruct
   #   manual_untie_embeddings: True
+redflag-tokens/phi3-5-rf:
+  id: redflag-tokens/phi3-5-5975292-chkpt-800
+  tokenizer_id: microsoft/Phi-3.5-mini-instruct
+  short_name: Phi 3.5
+  developer_name: Microsoft
+  compile: False
+  dtype: bfloat16
+  # dtype: int8
+  chat_template: phi-3  # same as phi-3 
+  trust_remote_code: False  # can't use torch's spda otherwise for some reason!
+  lora_cfg:
+    merge_lora: True
+    base_name: microsoft/Phi-3.5-mini-instruct
+    manual_untie_embeddings: False
+
+continuous-at/llama3-2-cat:
+  id: ContinuousAT/llama3.2-3B-IT-rf-cat
+  tokenizer_id: meta-llama/Llama-3.2-3B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: False
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: True
+  lora_cfg:
+    merge_lora: True
+    base_name: meta-llama/Llama-3.2-3B-Instruct
+    manual_untie_embeddings: False
+
+
 
 
 ##### Base models #####
