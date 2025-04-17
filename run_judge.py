@@ -21,7 +21,6 @@ torch.backends.cuda.matmul.allow_tf32 = True
 
 def collect_run_paths(save_dir, suffixes):
     paths = []
-    save_dir = "/ceph/ssd/staff/beyer/llm-quick-check/outputs/2025-04-17"
     for root, _, files in os.walk(save_dir):
         for file in files:
             if not file.endswith("run.json"):
