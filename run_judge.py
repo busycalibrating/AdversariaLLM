@@ -45,7 +45,7 @@ def run_judge(cfg: DictConfig) -> None:
     print(cfg)
     # Run model loading and path collection in parallel
     paths = collect_run_paths(cfg.save_dir, cfg.suffixes)
-    judge = Judge.from_name(cfg.classifier)()
+    judge = Judge.from_name(cfg.classifier)
     n = 0
     for path in tqdm(paths, file=sys.stdout):
         with filelock.FileLock(path + ".lock") as lock:

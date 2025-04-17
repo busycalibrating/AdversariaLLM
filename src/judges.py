@@ -15,16 +15,16 @@ class Judge(abc.ABC):
     Subclasses must implement the `judge` method.
     """
     @classmethod
-    def from_name(cls, name):
+    def from_name(cls, name: str) -> "Judge":
         match name:
             case "cais":
-                return CAISJudge
+                return CAISJudge()
             case "llama_guard_3_8b":
-                return LlamaGuard3Judge
+                return LlamaGuard3Judge()
             case "strong_reject":
-                return StrongRejectJudge
+                return StrongRejectJudge()
             case "overrefusal":
-                return OverRefusalJudge
+                return OverRefusalJudge()
             case _:
                 raise ValueError(f"Unknown judge {name}")
 
