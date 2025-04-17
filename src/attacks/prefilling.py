@@ -15,7 +15,7 @@ from src.lm_utils import generate_ragged_batched, prepare_conversation
 class PrefillingConfig:
     name: str = "prefilling"
     type: str = "discrete"
-    placement: Optional[str] = None
+    version: str = ""
     num_steps: int = 1
     seed: int = 0
     generation_config: GenerationConfig = field(default_factory=GenerationConfig)
@@ -32,7 +32,7 @@ class PrefillingAttack(Attack):
         tokenizer: transformers.AutoTokenizer,
         dataset: torch.utils.data.Dataset,
     ) -> AttackResult:
-        t0 = time.time()
+        t_start = time.time()
         token_list = []
         # 1. Prepare inputs
         for conversation in dataset:
@@ -50,8 +50,12 @@ class PrefillingAttack(Attack):
             top_k=self.config.generation_config.top_k,
             num_return_sequences=self.config.generation_config.num_return_sequences,
         )
+        t_end = time.time()
+        B = len(completions)
         runs = []
-        for i in range(len(completions)):
+        for i in range(B):
+            # We manuall add back the prefilled prefix here since it is part of the model
+            # turn
             completions_i = completions[i]
             for j in range(len(completions_i)):
                 completions_i[j] = dataset[i][-1]["content"] + completions_i[j]
@@ -61,13 +65,13 @@ class PrefillingAttack(Attack):
                     AttackStepResult(
                         step=0,
                         model_completions=completions[i],
-                        time_taken=(time.time() - t0) / len(completions),
+                        time_taken=(t_end - t_start) / B,
                         loss=None,
                         model_input=dataset[i],
                         model_input_tokens=token_list[i].tolist(),
                     )
                 ],
-                total_time=(time.time() - t0) / len(completions),
+                total_time=(t_end - t_start) / B,
             )
             runs.append(run)
 

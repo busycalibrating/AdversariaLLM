@@ -18,7 +18,10 @@ Fixes several issues in nanoGCG, mostly re. Llama-2 & tokenization
 """
 import gc
 import logging
+import random
+import sys
 import time
+
 from dataclasses import dataclass, field
 from functools import partial
 from typing import Literal
@@ -41,6 +44,7 @@ from .attack import Attack, AttackResult, GenerationConfig, SingleAttackRunResul
 class GCGConfig:
     name: str = "gcg"
     type: str = "discrete"
+    version: str = ""
     placement: str = "suffix"
     generation_config: GenerationConfig = field(default_factory=GenerationConfig)
     num_steps: int = 250
@@ -190,7 +194,7 @@ class GCGAttack(Attack):
             optim_strings = []
             self.stop_flag = False
             current_loss = buffer.get_lowest_loss()
-            for _ in (pbar := trange(self.config.num_steps)):
+            for _ in (pbar := trange(self.config.num_steps, file=sys.stdout)):
                 token_selection.target_ids = self.target_ids[:, :self.target_length]
                 token_selection.target_embeds = self.target_embeds[:, :self.target_length]
                 # Compute the token gradient
@@ -260,11 +264,12 @@ class GCGAttack(Attack):
                 num_return_sequences=self.config.generation_config.num_return_sequences,
             )  # (N_steps, N_return_sequences, T)
             steps = []
+            t1 = time.time()
             for i in range(len(optim_strings)):
                 step = AttackStepResult(
                     step=i,
                     model_completions=batch_completions[i],
-                    time_taken=(time.time() - t0) / len(optim_strings),
+                    time_taken=times[i],
                     loss=losses[i],
                     model_input=attack_conversations[i],
                     model_input_tokens=token_list[i].tolist(),
@@ -274,7 +279,7 @@ class GCGAttack(Attack):
             run = SingleAttackRunResult(
                 original_prompt=conversation,
                 steps=steps,
-                total_time=time.time() - t0,
+                total_time=t1 - t0,
             )
             runs.append(run)
         return AttackResult(runs=runs)
@@ -490,31 +495,36 @@ class SubstitutionSelectionStrategy:
             sampled_ids : Tensor, shape = (search_width, n_optim_ids)
                 sampled token ids
         """
-        # n_smoothing = 64
-        # grad_ids = ids.clone().unsqueeze(0).repeat(n_smoothing, 1)
-        # allowed_ids = [i for i in range(self.target_embeds.size(-1)) if i not in not_allowed_ids]
-        # import random
-        # for i in range(1, n_smoothing):
-        #     random_idx = random.choice(allowed_ids)
-        #     random_pos = torch.randint(0, grad_ids.shape[1], (1,))
-        #     grad_ids[i, 0] = random_idx
-        # print(grad_ids)
-        # grad = self.compute_token_gradient(grad_ids, model)
-        # # Calculate cosine similarity between the first gradient and all others
-        # first_grad = grad[0].view(-1)  # Flatten the first gradient
-        # cosine_similarities = []
-
-        # for i in range(1, n_smoothing):
-        #     other_grad = grad[i].view(-1)  # Flatten the current gradient
-        #     # Calculate cosine similarity
-        #     cos_sim = torch.nn.functional.cosine_similarity(first_grad.unsqueeze(0), other_grad.unsqueeze(0), dim=1)
-        #     cosine_similarities.append(cos_sim.item())
-
-        # print("Cosine similarities between first gradient and others:")
-        # print(cosine_similarities)
-        # grad = grad.mean(0)  # (n_optim_ids, vocab_size)
-
+        # Initial gradient computation
         grad = self.compute_token_gradient(ids.unsqueeze(0), model).squeeze(0)  # (n_optim_ids, vocab_size)
+
+        n_smoothing = self.config.grad_smoothing
+        if n_smoothing > 1:
+            allowed_ids = [i for i in range(self.target_embeds.size(-1)) if i not in not_allowed_ids]
+
+            # Get batch size for gradient smoothing
+            batch_size = 64
+            total_samples = n_smoothing - 1
+
+            all_grads = grad.clone()
+
+            # Process in batches
+            for batch_start in range(0, total_samples, batch_size):
+                current_batch_size = min(batch_size, total_samples - batch_start)
+
+                grad_ids_batch = ids.clone().unsqueeze(0).repeat(current_batch_size, 1)  # (batch_size, n_optim_ids)
+
+                random_positions = torch.randint(0, grad_ids_batch.shape[1], (current_batch_size, 1), device=ids.device)
+                random_indices = torch.tensor([random.choice(allowed_ids) for _ in range(current_batch_size)],
+                                             device=ids.device).unsqueeze(1)
+
+                for i in range(current_batch_size):
+                    grad_ids_batch[i, random_positions[i]] = random_indices[i]
+
+                batch_grads = self.compute_token_gradient(grad_ids_batch, model)
+                all_grads += batch_grads.sum(0)
+            grad = all_grads / n_smoothing
+
         n_optim_tokens = len(ids)
         original_ids = ids.repeat(search_width, 1)
 

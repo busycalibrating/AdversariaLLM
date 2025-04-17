@@ -16,7 +16,7 @@ from src.lm_utils import generate_ragged_batched, get_losses_batched, prepare_co
 class HumanJailbreaksConfig:
     name: str = "human_jailbreaks"
     type: str = "discrete"
-    placement: str = "prompt"
+    version: str = ""
     seed: int = 0
     generation_config: GenerationConfig = field(default_factory=GenerationConfig)
 
@@ -62,8 +62,7 @@ class HumanJailbreaksAttack(Attack):
         # B*N token sequences and reassemble the results at the end.
 
         for conversation in dataset:
-            # Assuming conversation = [{'role': 'user', ...}, {'role': 'assistant', ...}]
-            assert len(conversation) == 2, "Direct attack currently assumes single-turn conversation."
+            assert len(conversation) == 2, "Human jailbreak attack currently assumes single-turn conversation."
             original_conversations.append(conversation)
             for jb_prompt in JAILBREAKS:
                 attack_conversation = [
@@ -135,7 +134,7 @@ class HumanJailbreaksAttack(Attack):
 
         t_end_batch = time.time()
         total_batch_time = t_end_batch - t_start_batch
-        time_per_instance = total_batch_time / B / N
+        time_per_step = total_batch_time / B / N
 
         # --- 4. Assemble Results ---
         for i in range(B):
@@ -152,7 +151,7 @@ class HumanJailbreaksAttack(Attack):
                     step=j,
                     model_input=attack_prompt,
                     model_completions=model_completions,
-                    time_taken=time_per_instance,
+                    time_taken=time_per_step,
                     loss=loss,
                     model_input_tokens=model_input_tokens,
                 )
@@ -162,13 +161,13 @@ class HumanJailbreaksAttack(Attack):
             run_result = SingleAttackRunResult(
                 original_prompt=original_prompt,
                 steps=steps,
-                total_time=time_per_instance,  # Total time for this run is the instance time
+                total_time=total_batch_time / B,  # Total time for this run is the instance time
             )
 
             all_results.runs.append(run_result)
 
         logging.info(f"Direct attack run completed. Total Time: {total_batch_time:.2f}s, "
-                     f"Avg Time/Instance: {time_per_instance:.2f}s, "
+                     f"Avg Time/Instance: {time_per_step:.2f}s, "
                      f"Generation Time: {gen_time_total:.2f}s, Loss Calc Time: {loss_time_total:.2f}s")
 
         return all_results

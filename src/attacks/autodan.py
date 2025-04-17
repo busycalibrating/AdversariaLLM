@@ -1,7 +1,8 @@
 """Single file implementation of the AutoDAN attack [https://arxiv.org/abs/2310.04451]"""
-
+import logging
 import random
 import re
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -43,6 +44,7 @@ class MutateModelConfig:
 class AutoDANConfig:
     name: str = "autodan"
     type: str = "discrete"
+    version: str = ""
     placement: str = "prefix"
     generation_config: GenerationConfig = field(default_factory=GenerationConfig)
     num_steps: int = 100
@@ -84,9 +86,9 @@ class AutoDANAttack(Attack):
 
         # ========== Behavior meta data ==========
         for conversation in dataset:
+            t0 = time.time()
             assert len(conversation) == 2, "Current AutoDAN only supports single-turn conversations"
             msg = conversation[0]["content"]
-            target = conversation[1]["content"]
 
             # ==== Early stopping vars =====
             previous_loss = None
@@ -97,9 +99,9 @@ class AutoDANAttack(Attack):
             batch_losses = []
             batch_times = []
             current_loss = None
-            t0 = time.time()
 
-            for step in (pbar := trange(self.config.num_steps)):
+            for _ in (pbar := trange(self.config.num_steps, file=sys.stdout)):
+                t1 = time.time()
                 tokens = []
                 for attack_prefix in optim_strings:
                     attack_conversation = [
@@ -125,7 +127,7 @@ class AutoDANAttack(Attack):
                 pbar.set_postfix_str(f"Loss: {current_loss:.2f}")
                 batch_losses.append(current_loss)
                 batch_attacks.append(best_new_adv_prefix)
-                batch_times.append(time.time() - t0)
+                batch_times.append(time.time() - t1)
                 # ====== Checking for early stopping if loss stuck at local minima ======
                 if previous_loss is None or current_loss < previous_loss:
                     previous_loss = current_loss
@@ -164,6 +166,7 @@ class AutoDANAttack(Attack):
                 num_return_sequences=self.config.generation_config.num_return_sequences,
                 use_cache=True
             )
+            logging.info("Generated completions")
 
             # Create AttackStepResult objects for each completion
             step_results = []
@@ -171,7 +174,7 @@ class AutoDANAttack(Attack):
                 step_result = AttackStepResult(
                     step=i,
                     model_completions=completions,
-                    time_taken=batch_times[i],
+                    time_taken=batch_times[i] / len(batch_completions),
                     loss=batch_losses[i],
                     model_input=attack_conversations[i],
                     model_input_tokens=adv_prompt_tokens[i].tolist()

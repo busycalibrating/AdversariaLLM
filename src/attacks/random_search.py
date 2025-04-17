@@ -18,6 +18,7 @@ from src.lm_utils import (generate_ragged_batched, get_disallowed_ids,
 class RandomSearchConfig:
     name: str = "random_search"
     type: str = "discrete"
+    version: str = ""
     placement: str = "suffix"
     generation_config: GenerationConfig = field(default_factory=GenerationConfig)
     num_steps: int = 100
@@ -254,55 +255,24 @@ class RandomSearchAttack(Attack):
 
             # --- Logging and Plotting ---
             pbar.set_postfix({"loss": f"{current_mean_loss:.4f}", "best_loss": f"{best_losses.mean().item():.4f}"})
-            if (step_num+1) % 100 == 0:
-                import matplotlib.pyplot as plt
-                plt.figure(figsize=(12, 8))
-
-                # Plot losses over time
-                plt.subplot(3, 1, 1)
-                plt.scatter(range(len(mean_losses_history)), mean_losses_history, s=1, alpha=0.2, label='One-Hot Loss')
-                plt.xlabel('Step')
-                plt.ylabel('Loss')
-                plt.title('Loss vs. Training Step')
-                plt.legend()
-                plt.grid(True)
-
-                plt.subplot(3, 1, 3)
-                ax1 = plt.gca()
-                ax2 = ax1.twinx()
-                ax2.plot(mean_diffs_history, 'r-', label='Edit Distance [in one-hot space]')
-                ax2.set_ylabel('Fraction Changed', color='r')
-                ax2.tick_params(axis='y', labelcolor='r')
-
-                ax1.set_xlabel('Step')
-                ax1.set_title('One-Hot Token Changes per Step')
-                ax1.grid(True)
-
-                plt.legend()
-
-                plt.tight_layout()
-                plt.savefig('loss_analysis.pdf')
-                plt.close()
 
         # --- Generation Step ---
         # Flatten the per-example, per-step token lists for batch generation
         flat_token_list = [token_tensor for example_tokens in all_step_token_ids for token_tensor in example_tokens]
         outputs = []
-        if flat_token_list:
-            outputs = generate_ragged_batched(
-                model, tokenizer, token_list=flat_token_list,
-                initial_batch_size=self.batch_size,
-                max_new_tokens=self.config.generation_config.max_new_tokens,
-                temperature=self.config.generation_config.temperature,
-                top_p=self.config.generation_config.top_p, top_k=self.config.generation_config.top_k,
-                num_return_sequences=self.config.generation_config.num_return_sequences
-            )
-        else:
-            print("Warning: No valid token sequences to generate from.")
+        outputs = generate_ragged_batched(
+            model, tokenizer, token_list=flat_token_list,
+            initial_batch_size=self.batch_size,
+            max_new_tokens=self.config.generation_config.max_new_tokens,
+            temperature=self.config.generation_config.temperature,
+            top_p=self.config.generation_config.top_p, top_k=self.config.generation_config.top_k,
+            num_return_sequences=self.config.generation_config.num_return_sequences
+        )
 
         # --- Collate Results ---
         runs = []
         num_steps = self.config.num_steps
+        t_end = time.time()
 
         for i in range(num_examples):
             steps_for_prompt = []
@@ -321,7 +291,7 @@ class RandomSearchAttack(Attack):
             run = SingleAttackRunResult(
                 original_prompt=original_conversations_batch[i],
                 steps=steps_for_prompt,
-                total_time=(time.time() - t0) / num_examples
+                total_time=(t_end - t0) / num_examples
             )
             runs.append(run)
         return runs

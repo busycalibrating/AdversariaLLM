@@ -2,17 +2,19 @@
 
 Also implements a discretization attack based on Geisler et al. (2024).
 """
+import functools
+import logging
+import time
 from dataclasses import dataclass, field
 from typing import Literal
-import functools
-import time
+
 import torch
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from tqdm import trange
-from src.lm_utils import generate_ragged_batched, prepare_tokens, with_max_batchsize, get_disallowed_ids
 
-from .attack import Attack, AttackResult
+from src.attacks import Attack, AttackResult, AttackStepResult, GenerationConfig, SingleAttackRunResult
+from src.lm_utils import generate_ragged_batched, get_disallowed_ids, prepare_conversation, with_max_batchsize, TokenMergeError
 
 
 @dataclass
@@ -29,14 +31,14 @@ class PGDOneHotConfig:
     name: str = "pgd_one_hot"
     type: str = "continuous"
     placement: str = "suffix"
-    generate_completions: Literal["all", "best", "last"] = "all"
+    version: str = ""
     num_steps: int = 100
+    generation_config: GenerationConfig = field(default_factory=GenerationConfig)
     seed: int = 0
     batch_size: int = 2
     optim_str_init: str = "x x x x x x x x x x x x x x x x x x x x"
     epsilon: float = 100000.0
     alpha: float = 0.001
-    max_new_tokens: int = 256
     projection: Literal["l2", "simplex", None] = "simplex"
     normalize_gradient: bool = False
     optimizer: Literal["Adam", "SAM"] = "Adam"
@@ -44,57 +46,64 @@ class PGDOneHotConfig:
     lr_scheduler: LRSchedulerConfig = field(default_factory=LRSchedulerConfig)
 
 
+@dataclass
+class PGDAttackStepResult(AttackStepResult):
+    continuous_loss: float
+
+
 class PGDOneHotAttack(Attack):
     def __init__(self, config: PGDOneHotConfig):
         super().__init__(config)
         self.batch_size = self.config.batch_size
-        if self.config.placement == "suffix":
-            assert self.config.optim_str_init
-        elif self.config.placement == "prompt":
-            assert not self.config.optim_str_init
 
     def run(self, model: torch.nn.Module, tokenizer, dataset) -> AttackResult:
-        num_examples = len(dataset)
+        x: list = []
+        attack_masks: list = []
+        target_masks: list = []
+        conversations = []
 
-        x: list[torch.Tensor] = []
-        attack_masks: list[torch.Tensor] = []
-        target_masks: list[torch.Tensor] = []
-        prompts = []
-        for msg, target in dataset:
-            pre_tokens, prompt_tokens, attack_tokens, post_tokens, target_tokens = (
-                prepare_tokens(
-                    tokenizer,
-                    msg['content'],
-                    target,
-                    attack=self.config.optim_str_init,
-                    placement=self.config.placement,
-                )
-            )
+        for conversation in dataset:
+            attack_conversation = [
+                {"role": "user", "content": conversation[0]["content"] + self.config.optim_str_init},
+                {"role": "assistant", "content": conversation[1]["content"]}
+            ]
+            try:
+                pre_toks, attack_prefix_toks, prompt_toks, attack_suffix_toks, post_toks, target_toks = prepare_conversation(tokenizer, conversation, attack_conversation)[0]
+            except TokenMergeError:
+                attack_conversation = [
+                    {"role": "user", "content": conversation[0]["content"] + " " + self.config.optim_str_init},
+                    {"role": "assistant", "content": conversation[1]["content"]}
+                ]
+                pre_toks, attack_prefix_toks, prompt_toks, attack_suffix_toks, post_toks, target_toks = prepare_conversation(tokenizer, conversation, attack_conversation)[0]
+
             tokens = torch.cat(
-                [pre_tokens, prompt_tokens, attack_tokens, post_tokens, target_tokens]
+                [pre_toks, attack_prefix_toks, prompt_toks, attack_suffix_toks, post_toks, target_toks]
             )
             attack_mask = torch.cat(
                 [
-                    torch.zeros_like(pre_tokens),
-                    torch.zeros_like(prompt_tokens),
-                    torch.ones_like(attack_tokens),
-                    torch.zeros_like(post_tokens),
-                    torch.zeros_like(target_tokens),
+                    torch.zeros_like(pre_toks),
+                    torch.ones_like(attack_prefix_toks),
+                    torch.zeros_like(prompt_toks),
+                    torch.ones_like(attack_suffix_toks),
+                    torch.zeros_like(post_toks),
+                    torch.zeros_like(target_toks),
                 ]
             )
             target_mask = torch.cat(
                 [
-                    torch.zeros_like(pre_tokens),
-                    torch.zeros_like(prompt_tokens),
-                    torch.zeros_like(attack_tokens),
-                    torch.zeros_like(post_tokens),
-                    torch.ones_like(target_tokens),
+                    torch.zeros_like(pre_toks),
+                    torch.zeros_like(attack_prefix_toks),
+                    torch.zeros_like(prompt_toks),
+                    torch.zeros_like(attack_suffix_toks),
+                    torch.zeros_like(post_toks),
+                    torch.ones_like(target_toks),
                 ]
             ).roll(-1, 0)
-            prompts.append(msg)
+            conversations.append(attack_conversation)
             x.append(tokens)
             attack_masks.append(attack_mask)
             target_masks.append(target_mask)
+        logging.info(f"Prepared {len(conversations)} conversations for attack")
 
         x = pad_sequence(x, batch_first=True, padding_value=tokenizer.pad_token_id)
         target_masks = pad_sequence(target_masks, batch_first=True)
@@ -105,18 +114,17 @@ class PGDOneHotAttack(Attack):
         y[:, :-1] = x[:, 1:]
 
         # Run the attack with dynamic batch size adjustment
-        t0 = time.time()
         attack_fn = functools.partial(self.attack_batch, model, tokenizer)
-        losses, completions, times = with_max_batchsize(attack_fn, x, y, attention_mask, attack_masks, target_masks)
-        print(f"with_max_batchsize time: {time.time() - t0}")
-
-        return AttackResult(
-            attacks=[None] * num_examples,
-            completions=completions,
-            losses=losses,
-            prompts=prompts,
-            times=times,
+        runs = with_max_batchsize(
+            attack_fn,
+            x,
+            y,
+            conversations,
+            attention_mask,
+            attack_masks,
+            target_masks
         )
+        return AttackResult(runs=runs)
 
     def _make_random_one_hots(self, x, attack_masks, disallowed_mask, vocab_size, dtype):
         random_one_hots = F.one_hot(x, num_classes=vocab_size).to(dtype)
@@ -127,28 +135,39 @@ class PGDOneHotAttack(Attack):
         random_one_hots = F.one_hot(random_one_hots.argmax(dim=-1), num_classes=vocab_size).to(dtype)
         return random_one_hots
 
-    def attack_batch(self, model, tokenizer, x, y, attention_mask, attack_masks, target_masks):
+    def attack_batch(
+        self,
+        model,
+        tokenizer,
+        x_batch,
+        y_batch,
+        original_conversations_batch,
+        attention_mask_batch,
+        attack_masks_batch,
+        target_masks_batch
+    ) -> list[SingleAttackRunResult]:
+        t_start = time.time()
         disallowed_ids = get_disallowed_ids(tokenizer, allow_non_ascii=False, allow_special=False)
-        num_examples = x.size(0)
-        losses = [[] for _ in range(num_examples)]
-        completions = [[] for _ in range(num_examples)]
-        perturbed_embeddings_list = [[] for _ in range(num_examples)]
-        times = [[] for _ in range(num_examples)]
+        B = x_batch.size(0)
+        losses = [[] for _ in range(B)]
+        losses_one_hot = [[] for _ in range(B)]
+        perturbed_embeddings_list = [[] for _ in range(B)]
+        times = [[] for _ in range(B)]
 
         emb = model.get_input_embeddings().weight
-        x = x.to(model.device)
-        y = y.to(model.device)
-        attention_mask = attention_mask.to(model.device)
-        attack_masks = attack_masks.to(model.device)
-        target_masks = target_masks.to(model.device)
+        x_batch = x_batch.to(model.device)
+        y_batch = y_batch.to(model.device)
+        attention_mask_batch = attention_mask_batch.to(model.device)
+        attack_masks_batch = attack_masks_batch.to(model.device)
+        target_masks_batch = target_masks_batch.to(model.device)
 
         perturbed_one_hots = (
-            F.one_hot(x, num_classes=model.config.vocab_size)
+            F.one_hot(x_batch, num_classes=model.config.vocab_size)
             .to(model.dtype)
             .detach()
         )
         # Zero out disallowed token IDs for attack tokens
-        attack_mask_expanded = attack_masks.bool().unsqueeze(-1)  # Shape: (B, T, 1)
+        attack_mask_expanded = attack_masks_batch.bool().unsqueeze(-1)  # Shape: (B, T, 1)
         disallowed_mask = torch.zeros(model.config.vocab_size, device=model.device, dtype=torch.bool)
         disallowed_mask[disallowed_ids] = True  # Shape: (D)
         disallowed_mask_expanded = disallowed_mask.unsqueeze(0).unsqueeze(0)  # Shape: (1, 1, D)
@@ -157,7 +176,8 @@ class PGDOneHotAttack(Attack):
 
         # Make perturbed_one_hots a parameter for optimization
         perturbed_one_hots = perturbed_one_hots.detach().requires_grad_(True)
-        print(tokenizer.decode(perturbed_one_hots.argmax(dim=-1)[0].tolist()))
+        for i in range(B):
+            logging.info("Discrete suffix: " + tokenizer.decode(perturbed_one_hots[i].argmax(dim=-1)[attack_masks_batch[i].bool()].tolist()))
         # Initialize Adam optimizer with zero momentum
         if self.config.optimizer == "Adam":
             optimizer = torch.optim.Adam([perturbed_one_hots], lr=self.config.alpha)
@@ -184,7 +204,6 @@ class PGDOneHotAttack(Attack):
         else:
             raise ValueError(f"Invalid learning rate scheduler: {self.config.lr_scheduler.type}")
 
-        t0 = time.time()
         pbar = trange(self.config.num_steps, postfix={"loss": "N/A"})
 
         # Lists to store losses for plotting
@@ -197,6 +216,7 @@ class PGDOneHotAttack(Attack):
         best_perturbed_one_hots = last_one_hots.clone().detach()
         best_loss = float('inf')
         for _step in pbar:
+            t0 = time.time()
             optimizer.zero_grad()
             # Reinitialize optimizer and randomize perturbed_one_hots every 100 steps
             if _step > 0 and _step % self.config.restart_every == 0:
@@ -208,25 +228,23 @@ class PGDOneHotAttack(Attack):
 
             perturbed_one_hots_prev = perturbed_one_hots.clone().detach()
             # Forward pass
-            embeddings = perturbed_one_hots @ emb
-            logits = model(
-                inputs_embeds=embeddings,
-                attention_mask=attention_mask,
-            ).logits
-
-            # Calculate loss
+            outputs = model(
+                inputs_embeds=perturbed_one_hots @ emb,
+                attention_mask=attention_mask_batch,
+            )
+            logits = outputs.logits
             loss = F.cross_entropy(
                 logits.view(-1, logits.size(-1)),
-                y.view(-1),
+                y_batch.view(-1),
                 reduction="none",
             )
-            loss = loss * target_masks.view(-1)
-            loss = loss.view(embeddings.size(0), -1).mean(dim=1)
+            loss = loss.view(B, -1) * target_masks_batch  # (B, L)
+            loss = loss.sum(dim=1) / (target_masks_batch.sum(dim=1) + 1e-6)  # (B,)
             mean_loss = loss.mean()
             mean_loss.backward()
             # Zero out disallowed token IDs for attack tokens
             perturbed_one_hots.grad[..., disallowed_ids] = 0
-            perturbed_one_hots.grad[~attack_masks.bool()] = 0
+            perturbed_one_hots.grad[~attack_masks_batch.bool()] = 0
             if self.config.optimizer == "SAM":
                 optimizer.first_step(zero_grad=True)
                 projected = self.simplex_projection(perturbed_one_hots.clone().view(-1, perturbed_one_hots.size(-1)))
@@ -234,15 +252,15 @@ class PGDOneHotAttack(Attack):
                 embeddings = perturbed_one_hots @ emb
                 logits = model(
                     inputs_embeds=embeddings,
-                    attention_mask=attention_mask,
+                    attention_mask=attention_mask_batch,
                 ).logits
                 (F.cross_entropy(
                     logits.view(-1, logits.size(-1)),
-                    y.view(-1),
+                    y_batch.view(-1),
                     reduction="none",
-                ) * target_masks.view(-1)).view(embeddings.size(0), -1).mean().backward()
+                ) * target_masks_batch.view(-1)).view(embeddings.size(0), -1).mean().backward()
                 perturbed_one_hots.grad[..., disallowed_ids] = 0
-                perturbed_one_hots.grad[~attack_masks.bool()] = 0
+                perturbed_one_hots.grad[~attack_masks_batch.bool()] = 0
                 optimizer.second_step(zero_grad=True)
             elif self.config.optimizer == "Adam":
                 optimizer.step()
@@ -269,21 +287,25 @@ class PGDOneHotAttack(Attack):
                 argmax_indices = perturbed_one_hots.argmax(dim=-1)
                 discrete_perturbed_one_hots = F.one_hot(argmax_indices, num_classes=model.config.vocab_size).to(model.dtype)
 
-                print(tokenizer.decode(discrete_perturbed_one_hots.argmax(dim=-1)[0].tolist()))
+                for i in range(B):
+                    logging.info("Discrete suffix: " + tokenizer.decode(discrete_perturbed_one_hots[i].argmax(dim=-1)[attack_masks_batch[i].bool()].tolist()))
+
                 logits_one_hot = model(
                     inputs_embeds=discrete_perturbed_one_hots @ emb,
-                    attention_mask=attention_mask,
+                    attention_mask=attention_mask_batch,
                 ).logits
                 loss_one_hot = F.cross_entropy(
                     logits_one_hot.view(-1, logits_one_hot.size(-1)),
-                    y.view(-1),
+                    y_batch.view(-1),
                     reduction="none",
                 )
-                loss_one_hot = loss_one_hot * target_masks.view(-1)
-                loss_one_hot = loss_one_hot.view(embeddings.size(0), -1).mean(dim=1)
+                loss_one_hot = loss_one_hot.view(B, -1) * target_masks_batch  # (B, L)
+                loss_one_hot = loss_one_hot.sum(dim=1) / (target_masks_batch.sum(dim=1) + 1e-6)  # (B,)
+                # Record losses
+                for j, l in enumerate(loss_one_hot.detach().tolist()):
+                    losses_one_hot[j].append(l)
 
                 mean_loss_one_hot = loss_one_hot.mean()
-
                 # tsallis_projected = self.tsallis_q2_projection(perturbed_one_hots.clone().view(-1, perturbed_one_hots.size(-1)), 0.1, disallowed_ids)
                 # perturbed_one_hots.data = tsallis_projected.view_as(perturbed_one_hots).data
 
@@ -291,7 +313,7 @@ class PGDOneHotAttack(Attack):
                 mean_losses.append(mean_loss.item())
                 mean_losses_one_hot.append(mean_loss_one_hot.item())
 
-                diffs_one_hot = (last_one_hots != discrete_perturbed_one_hots).any(dim=-1).float()[attack_masks.bool()]
+                diffs_one_hot = (last_one_hots != discrete_perturbed_one_hots).any(dim=-1).float()[attack_masks_batch.bool()]
                 mean_diffs_one_hot.append(diffs_one_hot.mean().item())
 
                 diffs = (perturbed_one_hots_prev - perturbed_one_hots).norm(dim=-1).mean()
@@ -302,20 +324,12 @@ class PGDOneHotAttack(Attack):
                     best_loss = mean_loss_one_hot
                     best_perturbed_one_hots = discrete_perturbed_one_hots.clone().detach()
 
-            for j in range(x.size(0)):
-                times[j].append(time.time() - t0)
+            for i, (pe, tm) in enumerate(zip(discrete_perturbed_one_hots @ emb, target_masks_batch)):
+                perturbed_embeddings_list[i].append(self.select_tokens(pe, tm).detach())
 
-            # Generate completions if configured
-            if self.config.generate_completions == "all":
-                embeddings = discrete_perturbed_one_hots @ emb
-                embedding_list = [
-                    pe[~(tm.roll(1, 0).cumsum(0).bool())]
-                    for pe, tm in zip(embeddings, target_masks)
-                ]
-                for j, e in enumerate(embedding_list):
-                    perturbed_embeddings_list[j].append(e.detach())
-
-            # Update progress bar with current loss
+            t = time.time() - t0
+            for i in range(x_batch.size(0)):
+                times[i].append(t)
             pbar.set_postfix({"loss": f"{mean_loss.item():.4f}", "loss_one_hot": f"{mean_loss_one_hot.item():.4f}", "best_loss": f"{best_loss.item():.4f}", "lr": f"{current_lr:.2f}"})
             # Plot losses
             if (_step+1) % 100 == 0:
@@ -385,26 +399,38 @@ class PGDOneHotAttack(Attack):
                 plt.savefig('loss_analysis.pdf')
                 plt.close()
 
-        if self.config.generate_completions == "last":
-            embeddings = perturbed_one_hots @ emb
-            embedding_list = [
-                pe[~(tm.roll(1, 0).cumsum(0).bool())]
-                for pe, tm in zip(embeddings, target_masks)
-            ]
-            perturbed_embeddings_list = [[el] for el in embedding_list]
-
         flattened_embeddings = [e for el in perturbed_embeddings_list for e in el]
         outputs = generate_ragged_batched(
             model,
             tokenizer,
             embedding_list=flattened_embeddings,
             initial_batch_size=512,
-            max_new_tokens=self.config.max_new_tokens,
+            max_new_tokens=self.config.generation_config.max_new_tokens,
+            temperature=self.config.generation_config.temperature,
+            top_p=self.config.generation_config.top_p,
+            top_k=self.config.generation_config.top_k,
+            num_return_sequences=self.config.generation_config.num_return_sequences,
         )
+        logging.info(f"Generated {len(outputs)}x{len(outputs[0])} completions")
+        t_end = time.time()
+        runs = []
+        for i in range(B):
+            steps = []
+            for step in range(self.config.num_steps):
+                steps.append(PGDAttackStepResult(
+                    step=step,
+                    model_completions=outputs[i*self.config.num_steps + step],
+                    time_taken=times[i][step],
+                    loss=losses_one_hot[i][step],
+                    continuous_loss=losses[i][step],
+                ))
 
-        for i, output in enumerate(outputs):
-            completions[i // len(perturbed_embeddings_list[0])].append(output)
-        return losses, completions, times
+            runs.append(SingleAttackRunResult(
+                original_prompt=original_conversations_batch[i],
+                steps=steps,
+                total_time=(t_end - t_start) / B
+            ))
+        return runs
 
     @staticmethod
     def simplex_projection(values):
@@ -499,6 +525,10 @@ class PGDOneHotAttack(Attack):
 
         return values
 
+    @staticmethod
+    def select_tokens(embeddings, mask):
+        return embeddings[~(mask.roll(1, 0).cumsum(0).bool())].detach().cpu()
+
 
 class SAM(torch.optim.Optimizer):
     def __init__(self, params, base_optimizer, rho=0.05, adaptive=False, **kwargs):
@@ -559,13 +589,13 @@ class SAM(torch.optim.Optimizer):
     def _grad_norm(self):
         shared_device = self.param_groups[0]["params"][0].device  # put everything on the same device, in case of model parallelism
         norm = torch.norm(
-                    torch.stack([
-                        ((torch.abs(p) if group["adaptive"] else 1.0) * p.grad).norm(p=2).to(shared_device)
-                        for group in self.param_groups for p in group["params"]
-                        if p.grad is not None
-                    ]),
-                    p=2
-               )
+            torch.stack([
+                ((torch.abs(p) if group["adaptive"] else 1.0) * p.grad).norm(p=2).to(shared_device)
+                for group in self.param_groups for p in group["params"]
+                if p.grad is not None
+            ]),
+            p=2
+        )
         return norm
 
     def load_state_dict(self, state_dict):

@@ -3,6 +3,7 @@ outputs/
 __pycache__
 multirun/
 .vscode/settings.json
+pyrightconfig.json
 outputs_archive
 evaluate/**/*.png
 evaluate/**/*.pdf

@@ -1,5 +1,6 @@
 """Single-file implementation of the AmpleGCG attack."""
-
+import logging
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -10,9 +11,9 @@ from tqdm import tqdm, trange
 from transformers import GenerationConfig as HuggingFaceGenerationConfig
 
 from src.io_utils import free_vram, load_model_and_tokenizer
-from src.lm_utils import get_losses_batched, generate_ragged_batched, prepare_conversation
+from src.lm_utils import generate_ragged_batched, get_losses_batched, prepare_conversation
 
-from .attack import Attack, AttackResult, GenerationConfig, AttackStepResult, SingleAttackRunResult
+from .attack import Attack, AttackResult, AttackStepResult, GenerationConfig, SingleAttackRunResult
 
 
 @dataclass
@@ -34,6 +35,7 @@ class PrompterLMConfig:
 class AmpleGCGConfig:
     name: str = "ample_gcg"
     type: str = "discrete"
+    version: str = ""
     placement: str = "suffix"
     generation_config: GenerationConfig = field(default_factory=GenerationConfig)
     seed: int = 0
@@ -48,7 +50,7 @@ class AmpleGCGAttack(Attack):
     @torch.no_grad
     def run(self, model: torch.nn.Module, tokenizer, dataset) -> AttackResult:
         runs = []
-        for conversation in tqdm(dataset):
+        for conversation in tqdm(dataset, file=sys.stdout):
             assert len(conversation) == 2, "Current AmpleGCG only supports single-turn conversations"
             msg = conversation[0]["content"]
             target = conversation[1]["content"]
@@ -63,11 +65,14 @@ class AmpleGCGAttack(Attack):
                 [{"role": "user", "content": f"{msg}{attack}"}, {"role": "assistant", "content": target}]
                 for attack in batch_attacks
             ]
+            logging.info("Prepared attack conversations")
             batch_losses = self.get_losses(attack_conversations, model, tokenizer)
+            logging.info("Calculated losses")
             token_list = [
                 torch.cat(prepare_conversation(tokenizer, attack_conversation)[0][:-1])
                 for attack_conversation in attack_conversations
             ]
+            logging.info("Prepared token lists")
             batch_completions = generate_ragged_batched(
                 model,
                 tokenizer,
@@ -78,14 +83,16 @@ class AmpleGCGAttack(Attack):
                 top_k=self.config.generation_config.top_k,
                 num_return_sequences=self.config.generation_config.num_return_sequences,
             )
+            logging.info("Generated completions")
             for i in range(len(attack_conversations)):
                 attack_conversations[i][-1]["content"] = ""
+            t1 = time.time()
             step_results = [
                 AttackStepResult(
                     step=i,
                     model_completions=batch_completions[i],
                     jailbreak_scores={},
-                    time_taken=time.time() - t0,
+                    time_taken=(t1 - t0) / len(batch_attacks),
                     loss=batch_losses[i],
                     model_input=attack_conversations[i],
                     model_input_tokens=token_list[i].tolist()
@@ -95,9 +102,10 @@ class AmpleGCGAttack(Attack):
             single_attack_run_result = SingleAttackRunResult(
                 original_prompt=conversation,
                 steps=step_results,
-                total_time=time.time() - t0
+                total_time=t1 - t0
             )
             runs.append(single_attack_run_result)
+            logging.info("Created single attack run result")
         return AttackResult(runs)
 
     def get_attack_prompts(self, msg):

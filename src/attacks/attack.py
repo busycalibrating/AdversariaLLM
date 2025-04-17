@@ -19,7 +19,7 @@ class GenerationConfig:
 
 
 @beartype
-@dataclass
+@dataclass(kw_only=True)
 class AttackStepResult:
     """Stores results for a single step of an attack algorithm."""
     step: int  # The step number (e.g., iteration)
@@ -30,7 +30,8 @@ class AttackStepResult:
 
     # Judge scores - should be a dict of judge name -> list[p(harmful|completion1), p(harmful|completion2), ...]
     jailbreak_scores: dict[str, list[float]] = field(default_factory=dict)
-    # Time taken specifically for this step.
+    # Time taken specifically for this step, per prompt (i.e. if we're running a batched
+    # attack, this is step_time / batch_size).
     time_taken: float = 0.0
 
     # Optional fields, depending on the attack type
