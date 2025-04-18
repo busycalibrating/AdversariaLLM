@@ -125,6 +125,10 @@ class Attack(Generic[AttRes]):
                 from .pgd_one_hot import PGDOneHotAttack
 
                 return PGDOneHotAttack
+            case "actor":
+                from .actor import ActorAttack
+                
+                return ActorAttack
             case "prefilling":
                 from .prefilling import PrefillingAttack
 
