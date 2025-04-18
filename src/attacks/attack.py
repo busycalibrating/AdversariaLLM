@@ -1,8 +1,9 @@
 from dataclasses import dataclass, field
+from abc import abstractmethod
 
 import transformers
 from beartype import beartype
-from beartype.typing import Literal, Optional
+from beartype.typing import Literal, Optional, Generic, TypeVar
 
 from src.dataset import PromptDataset
 from src.types import Conversation
@@ -70,8 +71,9 @@ class AttackResult:
     """
     runs: list[SingleAttackRunResult] = field(default_factory=list)
 
+AttRes = TypeVar("AttRes", bound=AttackResult)
 
-class Attack:
+class Attack(Generic[AttRes]):
     def __init__(self, config):
         self.config = config
         transformers.set_seed(config.seed)
@@ -135,10 +137,11 @@ class Attack:
             case _:
                 raise ValueError(f"Unknown attack: {name}")
 
+    @abstractmethod
     def run(
         self,
         model: transformers.AutoModelForCausalLM,
         tokenizer: transformers.PreTrainedTokenizerBase,
         dataset: PromptDataset,
-    ) -> AttackResult:
+    ) -> AttRes:
         raise NotImplementedError
