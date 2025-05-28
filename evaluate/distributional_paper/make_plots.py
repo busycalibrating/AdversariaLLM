@@ -1,4 +1,7 @@
 import matplotlib.pyplot as plt
+import scienceplots
+plt.style.use("science")
+
 import numpy as np
 import pandas as pd
 from scipy.stats import rankdata
@@ -196,7 +199,7 @@ def pareto_plot(
     cost, step_idx, n_samp, mean_p = pts.T
     max_cost = max(cost)
     if x_scale == "log":
-        x_interp = np.logspace(13, np.log10(max_cost+1), n_x_points)
+        x_interp = np.logspace(11, np.log10(max_cost+1), n_x_points)
     else:
         x_interp = np.linspace(0, max_cost+1, n_x_points)
 
@@ -209,11 +212,11 @@ def pareto_plot(
         else:
             color_norm = None
         sc = plt.scatter(cost, mean_p, c=n_samp, cmap="viridis", alpha=0.15, s=3, norm=color_norm)
-    plt.xlabel("FLOPS")
+    plt.xlabel("Cost (FLOPS (optimization + sampling))", fontsize=14)
     if threshold is None:
-        plt.ylabel("Mean p_harmful")
+        plt.ylabel("Mean p_harmful", fontsize=14)
     else:
-        plt.ylabel(f"Mean ASR (threshold: {threshold})")
+        plt.ylabel(f"Mean ASR (threshold: {threshold})", fontsize=14)
 
     # ---------- overlay Pareto frontiers ----------
     cmap = plt.get_cmap("viridis")
@@ -242,9 +245,12 @@ def pareto_plot(
             y_interp = [interp1d(x_, y_, kind="previous", bounds_error=False, fill_value=(0, max(y_)))(x_interp) for x_, y_ in zip(xs, ys)]
 
             color = cmap(norm(j))
+            y_mean = np.mean(y_interp, axis=0)
+            # Filter out leading zeros
+            nonzero_mask = y_mean > 0
             plt.plot(
-                x_interp,
-                np.mean(y_interp, axis=0),
+                x_interp[nonzero_mask],
+                y_mean[nonzero_mask],
                 marker="o",
                 linewidth=1.8,
                 markersize=2,
@@ -253,7 +259,6 @@ def pareto_plot(
             )
 
     if plot_envelope:
-        # ---------- overlay Pareto frontiers ----------
         n_smoothing = 50
         y_interps = []
         for j in range(1, n_total_samples+1):
@@ -278,18 +283,10 @@ def pareto_plot(
         argmax = np.maximum.accumulate(argmax)
         y_envelope = np.max(y_interps, axis=0)
 
-        # color = "g" #[
-        # plt.plot(
-        #     np.arange(max_cost+1),
-        #     y_envelope,
-        #     marker="o",
-        #     linewidth=1.8,
-        #     markersize=4,
-        #     label=f"envelope",
-        #     color=color,
-        # )
-        color = [cmap(norm(argmax[i])) for i in range(len(argmax))]
-        plt.scatter(x_interp, y_envelope, c=color, s=2)
+        # Filter out leading zeros
+        nonzero_mask = y_envelope > 0
+        color = [cmap(norm(argmax[i])) for i in range(len(argmax)) if nonzero_mask[i]]
+        plt.scatter(x_interp[nonzero_mask], y_envelope[nonzero_mask], c=color, s=2)
 
     title_suffix = ""
 
@@ -330,9 +327,10 @@ def pareto_plot(
             mask = n_samp == 1
             fx, fy = _pareto_frontier(cost[mask], mean_p[mask], method=frontier_method)
             y_interp = interp1d(fx, fy, kind="previous", bounds_error=False, fill_value=(0, max(fy)))(x_interp)
+            nonzero_mask = y_interp > 0
             plt.plot(
-                x_interp,
-                y_interp,
+                x_interp[nonzero_mask],
+                y_interp[nonzero_mask],
                 marker="o",
                 linewidth=1.8,
                 markersize=2,
@@ -341,7 +339,7 @@ def pareto_plot(
             )
     plt.title(title + title_suffix)
     plt.grid(True, linewidth=0.3)
-
+    plt.ylim(bottom=0)
     plt.xscale(x_scale)
     plt.legend(title="Frontiers", loc="upper left" if x_scale == "log" else "lower right")
     plt.tight_layout()
@@ -463,6 +461,17 @@ ATTACKS = [
         },
         skip_if_empty=True,  # gracefully continue if no paths were found
     )),
+    ("direct", dict(
+        title_suffix="Direct temp 1.0",
+        cumulative=True,
+        sample_params=lambda: {
+            "generation_config": {"num_return_sequences": 1000, "temperature": 1.0},
+        },
+        baseline_params=lambda: {
+            "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
+        },
+        skip_if_empty=True,  # gracefully continue if no paths were found
+    )),
 ]
 
 METRIC = ("scores", "strong_reject", "p_harmful")
@@ -520,5 +529,120 @@ for model_key, model_title in MODELS.items():
     for atk_name, atk_cfg in ATTACKS:
         try:
             run_attack(model_key, model_title, atk_name, atk_cfg)
+        except Exception as e:
+            print(f"Error running attack {atk_name}, atk_cfg: {atk_cfg['title_suffix']}: {e}")
+
+
+
+# Helper ---------------------------------------------------------------------------
+def run_attack_2(
+    model: str,
+    model_title: str,
+    atk_name: str,
+    cfg: dict,
+):
+    print("Attack:", atk_name)
+
+    # ---------- helper to fetch data ----------
+    def fetch(attack: str, attack_params: dict):
+        filter_by = dict(
+            model=model,
+            attack=attack,
+            attack_params=attack_params,
+            dataset_params={"idx": DATASET_IDX},
+        )
+        paths = get_filtered_and_grouped_paths(filter_by, GROUP_BY)
+        results = collect_results(paths, infer_sampling_flops=True)
+        assert len(results) == 1, len(results)
+        return list(results.values())[0]
+
+    # ---------- sampled run ----------
+    sampled_data = fetch(cfg.get("attack_override", atk_name), cfg["sample_params"]())
+
+    # Attack-specific post-processing
+    if post := cfg.get("postprocess"):
+        post(sampled_data, METRIC)
+
+    data = np.array(sampled_data[("scores", "strong_reject", "p_harmful")])[:, 0]
+    # Create histogram plot
+    plt.figure(figsize=(10, 6))
+    plt.hist(data.flatten(), bins=100, alpha=0.7, edgecolor='black')
+    plt.xlabel('p_harmful', fontsize=14)
+    plt.ylabel('Frequency', fontsize=14)
+    plt.title(f'{model_title} - {atk_name} - p_harmful Distribution', fontsize=16)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    # Save the plot
+    filename = f"evaluate/distributional_paper/histograms/{model_title}_{cfg['title_suffix']}.png"
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    plt.close()
+
+for model_key, model_title in MODELS.items():
+    print("Model:", model_key)
+    for atk_name, atk_cfg in ATTACKS:
+        if atk_name != "direct": continue
+        try:
+            run_attack_2(model_key, model_title, atk_name, atk_cfg)
+        except Exception as e:
+            print(f"Error running attack {atk_name}, atk_cfg: {atk_cfg['title_suffix']}: {e}")
+
+
+# Helper ---------------------------------------------------------------------------
+def run_attack_2(
+    model: str,
+    model_title: str,
+    atk_name: str,
+    cfg: dict,
+):
+    print("Attack:", atk_name)
+
+    # ---------- helper to fetch data ----------
+    def fetch(attack: str, attack_params: dict):
+        filter_by = dict(
+            model=model,
+            attack=attack,
+            attack_params=attack_params,
+            dataset_params={"idx": DATASET_IDX},
+        )
+        paths = get_filtered_and_grouped_paths(filter_by, GROUP_BY)
+        results = collect_results(paths, infer_sampling_flops=True)
+        assert len(results) == 1, len(results)
+        return list(results.values())[0]
+
+    # ---------- sampled run ----------
+    sampled_data = fetch(cfg.get("attack_override", atk_name), cfg["sample_params"]())
+
+    # Attack-specific post-processing
+    if post := cfg.get("postprocess"):
+        post(sampled_data, METRIC)
+
+    plt.figure(figsize=(10, 6))
+    data_list = []
+    positions = []
+    for i in range(0, 250, 25):
+        data = np.array(sampled_data[("scores", "strong_reject", "p_harmful")])[:, i]
+        data_list.append(data.flatten())
+        positions.append(i)
+
+    # Create violin plot
+    plt.violinplot(data_list, positions=positions, widths=20, showmeans=True, showmedians=True)
+    plt.xlabel('Step', fontsize=14)
+    plt.ylabel('Frequency', fontsize=14)
+    plt.title(f'{model_title} - {atk_name} - p_harmful Distribution', fontsize=16)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    # Save the plot
+    filename = f"evaluate/distributional_paper/histograms/{model_title}_{cfg['title_suffix']}.png"
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    plt.close()
+
+for model_key, model_title in MODELS.items():
+    print("Model:", model_key)
+    for atk_name, atk_cfg in ATTACKS:
+        if atk_name != "gcg": continue
+        try:
+            run_attack_2(model_key, model_title, atk_name, atk_cfg)
         except Exception as e:
             print(f"Error running attack {atk_name}, atk_cfg: {atk_cfg['title_suffix']}: {e}")
