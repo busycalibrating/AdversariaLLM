@@ -346,6 +346,163 @@ def pareto_plot(
     plt.savefig(f"evaluate/distributional_paper/pareto_plots/{title}.pdf")
 
 
+def flops_ratio_plot(
+    results: dict[str,np.ndarray],
+    baseline: dict[str,np.ndarray] | None = None,
+    title: str = "FLOPS Ratio Analysis",
+    sample_levels_to_plot: tuple[int, ...]|None = None,
+    metric: tuple[str, ...] = ('scores', 'strong_reject', 'p_harmful'),
+    cumulative: bool = False,
+    flops_per_step: int | None = None,
+    threshold: float|None = None,
+    color_scale: str = "linear",
+    verbose: bool = True,
+):
+    """
+    Plot p_harmful vs the ratio of optimization FLOPS to sampling FLOPS.
+
+    Parameters
+    ----------
+    results : dict
+        Results dictionary containing metric data and FLOPS information
+    baseline : dict, optional
+        Baseline results for comparison
+    title : str
+        Plot title
+    sample_levels_to_plot : tuple[int, ...], optional
+        Which sample levels to highlight
+    metric : tuple[str, ...]
+        Metric to plot on y-axis
+    cumulative : bool
+        Whether to use cumulative aggregation
+    flops_per_step : callable, optional
+        Function to compute optimization FLOPS per step
+    threshold : float, optional
+        Threshold for binary classification
+    color_scale : str
+        Color scale type ("linear" or "log")
+    verbose : bool
+        Whether to print debug information
+    """
+    y = np.array(results[metric])  # (B, n_steps, n_samples)
+    if threshold is not None:
+        y = y > threshold
+    n_runs, n_steps, n_total_samples = y.shape
+    if sample_levels_to_plot is None:
+        sample_levels_to_plot = generate_sample_sizes(n_total_samples)
+
+    flops_sampling = np.array(results["flops_sampling"]) # (B, n_steps)
+    if "flops" in results:
+        flops_optimization = np.array(results["flops"]) # (B, n_steps)
+    else:
+        flops_optimization = np.zeros_like(flops_sampling) # (B, n_steps)
+        if flops_per_step is not None:
+            flops_optimization += flops_per_step(np.arange(flops_optimization.shape[1]))
+
+    def subsample_and_aggregate_ratio(step_idx, sample_idx, cumulative, y, opt_flops, sampling_flops, rng):
+        n_runs, n_steps, n_total_samples = y.shape
+        opt_flop = np.mean(opt_flops[:, :step_idx+1].sum(axis=1))
+        sampling_flop = np.mean(sampling_flops[:, step_idx]) * sample_idx
+
+        # Calculate ratio (sampling / total), handle division by zero
+        ratio = sampling_flop / (sampling_flop + opt_flop + 1e-9)
+
+        if cumulative and step_idx > 0:
+            samples_at_end = y[:, step_idx, rng.choice(n_total_samples, size=sample_idx, replace=False)].max(axis=-1)
+            samples_up_to_now = y[:, :step_idx, rng.choice(n_total_samples, size=1, replace=False)].max(axis=1)[:, 0]
+            values = np.stack([samples_up_to_now, samples_at_end], axis=1).max(axis=1)
+            return (ratio, step_idx, sample_idx, values.mean(0), opt_flop, sampling_flop)
+        return (ratio, step_idx, sample_idx, y[:, step_idx, rng.choice(n_total_samples, size=sample_idx, replace=False)].max(axis=-1).mean(axis=0), opt_flop, sampling_flop)
+
+    def get_ratio_pts(y, opt_flops, sampling_flops):
+        n_runs, n_steps, n_total_samples = y.shape
+        rng = np.random.default_rng()
+        pts = []  # (ratio, step, n_samples, mean_p, opt_flop, sampling_flop)
+        for j in range(1, n_total_samples + 1, 1):
+            for i in range(0, n_steps, 1):
+                pts.append(subsample_and_aggregate_ratio(i, j, cumulative, y, opt_flops, sampling_flops, rng))
+        pts = np.asarray(pts)
+        return pts
+
+    pts = get_ratio_pts(y, flops_optimization, flops_sampling)
+    ratio, step_idx, n_samp, mean_p, opt_flop, sampling_flop = pts.T
+
+    # Filter out infinite ratios for plotting
+    finite_mask = np.isfinite(ratio)
+    ratio_finite = ratio[finite_mask]
+    mean_p_finite = mean_p[finite_mask]
+    n_samp_finite = n_samp[finite_mask]
+
+    plt.figure(figsize=(10, 6))
+
+    # Scatter plot
+    if color_scale == "log":
+        color_norm = LogNorm()
+    else:
+        color_norm = None
+
+    sc = plt.scatter(ratio_finite, mean_p_finite, c=n_samp_finite, cmap="viridis", alpha=0.3, s=15, norm=color_norm)
+    plt.colorbar(sc, label="Number of Samples")
+
+    # Highlight specific sample levels
+    cmap = plt.get_cmap("viridis")
+    if color_scale == "log":
+        norm = LogNorm(n_samp.min(), n_samp.max())
+    else:
+        norm = plt.Normalize(n_samp.min(), n_samp.max())
+
+    for j in sample_levels_to_plot:
+        mask = (n_samp == j) & finite_mask
+        if np.any(mask):
+            color = cmap(norm(j))
+            plt.scatter(ratio[mask], mean_p[mask],
+                       color=color, s=50, alpha=0.8,
+                       edgecolors='black', linewidth=0.5,
+                       label=f"{j} samples")
+
+    plt.xlabel("Sampling FLOPS / Total FLOPS", fontsize=14)
+    if threshold is None:
+        plt.ylabel("Mean p_harmful", fontsize=14)
+    else:
+        plt.ylabel(f"Mean ASR (threshold: {threshold})", fontsize=14)
+
+    plt.grid(True, alpha=0.3)
+    plt.title(title, fontsize=16)
+
+    # Add baseline if provided
+    if baseline is not None:
+        y_baseline = np.array(baseline[metric])
+        if threshold is not None:
+            y_baseline = y_baseline > threshold
+
+        baseline_flops_sampling = np.array(baseline["flops_sampling"])
+        if "flops" in baseline:
+            baseline_flops_optimization = np.array(baseline["flops"])
+        else:
+            baseline_flops_optimization = np.zeros_like(baseline_flops_sampling)
+            if flops_per_step is not None:
+                baseline_flops_optimization += flops_per_step(np.arange(baseline_flops_optimization.shape[1]))
+
+        baseline_pts = get_ratio_pts(y_baseline, baseline_flops_optimization, baseline_flops_sampling)
+        baseline_ratio, _, baseline_n_samp, baseline_mean_p, _, _ = baseline_pts.T
+
+        baseline_finite_mask = np.isfinite(baseline_ratio)
+        plt.scatter(baseline_ratio[baseline_finite_mask], baseline_mean_p[baseline_finite_mask],
+                   color="red", s=50, alpha=0.8, marker="^",
+                   edgecolors='black', linewidth=0.5, label="Greedy")
+
+    plt.xscale("log")
+    plt.xlim(1e-5, 1)
+    plt.ylim(bottom=0)
+    plt.legend(loc='upper left')
+    plt.tight_layout()
+    plt.savefig(f"evaluate/distributional_paper/flops_ratio_plots/{title}.pdf", bbox_inches='tight')
+    plt.close()
+
+    if verbose:
+        print(f"FLOPS ratio range: {ratio_finite.min():.2e} to {ratio_finite.max():.2e}")
+        print(f"Mean p_harmful range: {mean_p_finite.min():.4f} to {mean_p_finite.max():.4f}")
+
 
 # ----------------------------------------------------------------------------------
 # Pareto plots – simplified
@@ -523,15 +680,73 @@ def run_attack(
         threshold=None,
     )
 
-# Main loop ------------------------------------------------------------------------
+
+def run_attack_flops_ratio(
+    model: str,
+    model_title: str,
+    atk_name: str,
+    cfg: dict,
+):
+    print("FLOPS Ratio Attack:", atk_name)
+
+    # ---------- helper to fetch data ----------
+    def fetch(attack: str, attack_params: dict):
+        filter_by = dict(
+            model=model,
+            attack=attack,
+            attack_params=attack_params,
+            dataset_params={"idx": DATASET_IDX},
+        )
+        paths = get_filtered_and_grouped_paths(filter_by, GROUP_BY)
+        results = collect_results(paths, infer_sampling_flops=True)
+        assert len(results) == 1, len(results)
+        return list(results.values())[0]
+
+    # ---------- sampled run ----------
+    sampled_data = fetch(cfg.get("attack_override", atk_name), cfg["sample_params"]())
+
+    # Attack-specific post-processing
+    if post := cfg.get("postprocess"):
+        post(sampled_data, METRIC)
+
+    # ---------- baseline run ----------
+    baseline_attack = cfg.get("baseline_attack", atk_name)
+    baseline_data = fetch(baseline_attack, cfg["baseline_params"]())
+
+    # ---------- plot ----------
+    flops_ratio_plot(
+        sampled_data,
+        baseline_data,
+        title=f"{model_title} {cfg['title_suffix']} FLOPS Ratio",
+        cumulative=cfg["cumulative"],
+        metric=METRIC,
+        flops_per_step=lambda x: FLOPS_PER_STEP.get(atk_name, lambda x, c: 0)(x, num_model_params(model)),
+        threshold=None,
+    )
+
+
+# # Main loop ------------------------------------------------------------------------
+# for model_key, model_title in MODELS.items():
+#     print("Model:", model_key)
+#     for atk_name, atk_cfg in ATTACKS:
+#         try:
+#             run_attack(model_key, model_title, atk_name, atk_cfg)
+#         except Exception as e:
+#             print(f"Error running attack {atk_name}, atk_cfg: {atk_cfg['title_suffix']}: {e}")
+
+
+# FLOPS Ratio plots main loop ------------------------------------------------------
+print("\n" + "="*80)
+print("GENERATING FLOPS RATIO PLOTS")
+print("="*80)
+
 for model_key, model_title in MODELS.items():
     print("Model:", model_key)
     for atk_name, atk_cfg in ATTACKS:
-        try:
-            run_attack(model_key, model_title, atk_name, atk_cfg)
-        except Exception as e:
-            print(f"Error running attack {atk_name}, atk_cfg: {atk_cfg['title_suffix']}: {e}")
-
+        # try:
+            run_attack_flops_ratio(model_key, model_title, atk_name, atk_cfg)
+        # except Exception as e:
+        #     print(f"Error running FLOPS ratio attack {atk_name}, atk_cfg: {atk_cfg['title_suffix']}: {e}")
 
 
 # Helper ---------------------------------------------------------------------------
