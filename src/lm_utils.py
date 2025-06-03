@@ -22,7 +22,7 @@ def generate_ragged_batched(
     tokenizer: PreTrainedTokenizerBase,
     token_list: list[torch.IntTensor] | None = None,
     embedding_list: list[torch.FloatTensor] | None = None,
-    initial_batch_size: int = 256,
+    initial_batch_size: int | None = None,
     use_cache: bool = True,
     verbose: bool = False,
     num_return_sequences: int = 1,
@@ -106,9 +106,14 @@ def with_max_batchsize(function: Callable, *inputs, initial_batch_size: int | No
 
     outputs = []
     i = 0
+
+    def next_power_of_two(n):
+        return 1 << (n - 1).bit_length()
+
     if initial_batch_size is None:
-        initial_batch_size = input_length
-    batch_size = min(initial_batch_size, input_length)
+        initial_batch_size = next_power_of_two(input_length)
+
+    batch_size = min(initial_batch_size, next_power_of_two(input_length))
     pbar = tqdm(total=input_length, desc=f"Running function b={batch_size}", file=sys.stdout) if verbose else None
 
     while i < input_length:
