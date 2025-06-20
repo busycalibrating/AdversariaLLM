@@ -9,7 +9,8 @@ from scipy.stats import rankdata
 from scipy.interpolate import interp1d
 from matplotlib.colors import LogNorm, PowerNorm
 from scipy.interpolate import griddata
-from brokenaxes import brokenaxes
+import logging
+logging.basicConfig(level=logging.INFO)
 
 pd.set_option("display.max_colwidth", None)
 pd.set_option("display.max_columns", None)
@@ -140,6 +141,7 @@ def fetch_data(model: str, attack: str, attack_params: dict, dataset_idx: list[i
     paths = get_filtered_and_grouped_paths(filter_by, group_by)
 
     results = collect_results(paths, infer_sampling_flops=True)
+    print(group_by, filter_by, len(paths), len(results))
     assert len(results) == 1, f"Should only have exactly one type of result, got {len(results)}, {list(results.keys())}"
     return list(results.values())[0]
 
@@ -269,11 +271,11 @@ def pareto_plot(
     else:
         x_interp = np.linspace(0, max_cost+1, n_x_points)
 
-    # Create figure with subplots: main plot + 2 bar charts
-    fig = plt.figure(figsize=(18, 6))
+    # Create figure with subplots: main plot + 2x2 grid on the right
+    fig = plt.figure(figsize=(18, 8))
 
     # Main Pareto plot (left half, spanning both rows)
-    ax1 = plt.subplot2grid((1, 4), (0, 0), colspan=2)
+    ax1 = plt.subplot2grid((2, 4), (0, 0), colspan=2, rowspan=2)
 
     # ---------- scatter all points ----------
     color_norm = setup_color_normalization(color_scale, n_samp)
@@ -378,8 +380,8 @@ def pareto_plot(
         if y_baseline is not None:
             title_suffix = f" ({n_runs}, {y_baseline.shape[0]})"
             if verbose:
-                print(n_runs, "for main")
-                print(y_baseline.shape[0], "for baseline")
+                logging.info(f"{n_runs} for main")
+                logging.info(f"{y_baseline.shape[0]} for baseline")
             n_runs_baseline, n_steps_baseline, n_total_samples_baseline = y_baseline.shape
             assert n_total_samples_baseline == 1
 
@@ -408,7 +410,7 @@ def pareto_plot(
                     marker="o",
                     linewidth=1.8,
                     markersize=2,
-                    label=f"greedy",
+                    label=f"Baseline",
                     color="r",
                 )
 
@@ -419,7 +421,7 @@ def pareto_plot(
     plt.legend(title="Frontiers", loc="upper left" if x_scale == "log" else "lower right")
 
     # ---------- Bar Chart 1: Max ASR Comparison (Vertical Slice) ----------
-    ax2 = plt.subplot2grid((1, 4), (0, 2))
+    ax2 = plt.subplot2grid((2, 4), (0, 2))
 
     methods = []
     max_asrs = []
@@ -427,7 +429,7 @@ def pareto_plot(
 
     # Add baseline (delta = 0 for baseline)
     if baseline_frontier_data is not None:
-        methods.append("Greedy")
+        methods.append("Baseline")
         max_asrs.append(0.0)  # Delta from itself is 0
         colors.append("red")
 
@@ -443,9 +445,9 @@ def pareto_plot(
         bars = plt.bar(methods, max_asrs, color=colors, alpha=0.7, edgecolor='black')
         if threshold is None:
             plt.ylabel(r"$\Delta$ $p_{harmful}$", fontsize=14)
-            plt.title(r"$p_{harmful}$ vs. \#samples", fontsize=14)
+            # plt.title(r"$p_{harmful}$ vs. \#samples", fontsize=14)
         else:
-            plt.title(r"$\overline{{ASR}}$ vs. \#samples".format(threshold=threshold), fontsize=14)
+            # plt.title(r"$\overline{{ASR}}$ vs. \#samples".format(threshold=threshold), fontsize=14)
             plt.ylabel(r"$\Delta$ $\overline{{ASR}}\quad (p_{{harmful}} \geq {threshold})$".format(threshold=threshold), fontsize=14)
         plt.xticks(rotation=45, ha='right')
         plt.grid(True, alpha=0.3, axis='y')
@@ -458,18 +460,17 @@ def pareto_plot(
         for bar, value in zip(bars, max_asrs):
             # choose label position: above for positive, below for negative
             offset_pt = 4      # visual gap in points
-            y = bar.get_height()
-            va = 'bottom' if y >= 0 else 'top'
-            offset = (0, offset_pt if y >= 0 else -offset_pt)
+            va = 'bottom' if value >= 0 else 'top'
+            offset = (0, offset_pt if value >= 0 else -offset_pt)
 
             ax2.annotate(f'{value:.3f}',
-                        xy=(bar.get_x() + bar.get_width()/2, y),
+                        xy=(bar.get_x() + bar.get_width()/2, bar.get_height()),
                         xytext=offset,
                         textcoords='offset points',
                         ha='center', va=va, fontsize=10)
 
-    # ---------- Bar Chart 2: FLOPS Efficiency to Reach Greedy ASR (Horizontal Slice) ----------
-    ax3 = plt.subplot2grid((1, 4), (0, 3))
+    # ---------- Bar Chart 2: FLOPS Efficiency to Reach Baseline ASR (Horizontal Slice) ----------
+    ax3 = plt.subplot2grid((2, 4), (0, 3))
 
     if baseline_frontier_data is not None and baseline_max_asr > 0:
         methods_flops = []
@@ -504,14 +505,13 @@ def pareto_plot(
             else:
                 # Fallback to minimum FLOPS if no point reaches target ASR
                 baseline_flops = np.min(baseline_x_vals)
-            methods_flops.insert(0, "Greedy")
+            methods_flops.insert(0, "Baseline")
             flops_required.insert(0, baseline_flops)
             colors_flops.insert(0, "red")
 
         if methods_flops:
             bars = plt.bar(methods_flops, flops_required, color=colors_flops, alpha=0.7, edgecolor='black')
-            plt.ylabel("FLOPS", fontsize=12)
-            plt.title(r"FLOPS to reach same $p_{harmful}$ as greedy" + f" ( = {target_asr:.3f})", fontsize=12)
+            plt.ylabel(r"FLOPS for Baseline $p_{harmful}$" + f" ( = {target_asr:.3f})", fontsize=12)
             plt.xticks(rotation=45, ha='right')
             plt.yscale('log')
             plt.grid(True, alpha=0.3, axis='y')
@@ -528,6 +528,132 @@ def pareto_plot(
                             xytext=(0, 5),                                  # 5 points straight up
                             textcoords='offset points',
                             ha='center', va='bottom', rotation=45, fontsize=9)
+
+    # ---------- Bar Chart 3: Speedup vs Baseline (Bottom Right) ----------
+    ax4 = plt.subplot2grid((2, 4), (1, 3))
+
+    # Create speedup plot
+    speedup_methods = []
+    speedups = []
+    speedup_colors = []
+
+    # Calculate speedup for each method (baseline_flops / method_flops)
+    baseline_flops = flops_required[0] if methods_flops[0] == "Baseline" else None
+
+    if baseline_flops is not None:
+        for i, (method, flops, color) in enumerate(zip(methods_flops, flops_required, colors_flops)):
+            if method != "Baseline":  # Skip baseline itself
+                speedup = baseline_flops / flops if flops > 0 else 0
+                speedup_methods.append(method)
+                speedups.append(speedup)
+                speedup_colors.append(color)
+
+        if speedup_methods:
+            bars = plt.bar(speedup_methods, speedups, color=speedup_colors, alpha=0.7, edgecolor='black')
+            plt.ylabel("Speedup (FLOPS) vs Baseline", fontsize=12)
+            plt.xticks(rotation=45, ha='right')
+            plt.grid(True, alpha=0.3, axis='y')
+
+            # Add horizontal line at y=1 for reference
+            plt.axhline(y=1, color='red', linestyle='--', alpha=0.7, linewidth=1)
+
+            # Increase ylim by small margin
+            ymin, ymax = plt.ylim()
+            margin = (ymax - ymin) * 0.05
+            plt.ylim(max(0, ymin - margin), ymax + margin)
+
+            # Add value labels on bars
+            for bar, value in zip(bars, speedups):
+                ax4.annotate(f'{value:.2f}x',
+                            xy=(bar.get_x() + bar.get_width()/2, bar.get_height()),
+                            xytext=(0, 5),
+                            textcoords='offset points',
+                            ha='center', va='bottom', fontsize=10)
+
+    # ---------- Line Plot 4: Continuous FLOPS to Reach Baseline ASR (Bottom Left) ----------
+    ax5 = plt.subplot2grid((2, 4), (1, 2))
+
+    if baseline_frontier_data is not None and baseline_max_asr > 0:
+        target_asr = baseline_max_asr
+
+        # Generate continuous range of sample counts
+        sample_range = range(1, n_total_samples + 1)
+        continuous_flops = []
+        continuous_samples = []
+
+        # Calculate frontier data for all sample counts (not just sample_levels_to_plot)
+        rng_continuous = np.random.default_rng()
+        n_smoothing_continuous = 10  # Reduced for performance
+
+        for j in sample_range:
+            xs = []
+            ys = []
+            for _ in range(n_smoothing_continuous):
+                pts = []
+                for i in range(0, n_steps, 1):
+                    pts.append(subsample_and_aggregate(i, j, cumulative, y, flops_optimization,
+                                                     flops_sampling_prefill_cache, flops_sampling_generation, rng_continuous))
+
+                pts = np.asarray(pts)
+                cost, _, _, mean_p = pts.T
+
+                fx, fy = _pareto_frontier(cost, mean_p, method=frontier_method)
+                xs.append(fx)
+                ys.append(fy)
+
+            # Interpolate and average
+            y_interp = [interp1d(x_, y_, kind="previous", bounds_error=False, fill_value=(0, max(y_)))(x_interp)
+                       for x_, y_ in zip(xs, ys)]
+            y_mean = np.mean(y_interp, axis=0)
+
+            # Find minimum FLOPS where ASR >= target_asr
+            nonzero_mask = y_mean > 0
+            if np.any(nonzero_mask):
+                y_vals = y_mean[nonzero_mask]
+                x_vals = x_interp[nonzero_mask]
+
+                valid_indices = y_vals >= target_asr
+                if np.any(valid_indices):
+                    min_flops = np.min(x_vals[valid_indices])
+                    continuous_flops.append(min_flops)
+                    continuous_samples.append(j)
+
+        if continuous_flops:
+            # Plot the continuous line
+            plt.plot(continuous_samples, continuous_flops, 'b-', linewidth=2, alpha=0.8, label='All Samples')
+
+            # Highlight the baseline point
+            if baseline_frontier_data['x'].size > 0:
+                baseline_y_vals = baseline_frontier_data['y']
+                baseline_x_vals = baseline_frontier_data['x']
+                baseline_valid_indices = baseline_y_vals >= target_asr
+                if np.any(baseline_valid_indices):
+                    baseline_flops = np.min(baseline_x_vals[baseline_valid_indices])
+                    plt.axhline(y=baseline_flops, color='red', linestyle='--', alpha=0.7, linewidth=2, label='Baseline')
+
+            # Highlight the discrete sample levels from the bar chart
+            for j in sample_levels_to_plot:
+                if j in [s for s in continuous_samples]:
+                    idx = continuous_samples.index(j)
+                    color = cmap(color_norm(j))
+                    plt.scatter(j, continuous_flops[idx], color=color, s=60, alpha=0.9,
+                              edgecolors='black', linewidth=0.5, zorder=5)
+
+            plt.xlabel("Number of Samples", fontsize=12)
+            plt.ylabel("FLOPS to Reach Baseline ASR", fontsize=12)
+            plt.xscale('log')
+            plt.yscale('log')
+            plt.grid(True, alpha=0.3)
+            plt.legend(fontsize=10)
+
+            # Set reasonable x-axis limits
+            plt.xlim(1, n_total_samples)
+
+            # Increase ylim by small margin
+            ymin, ymax = plt.ylim()
+            import math
+            margin = ((math.log10(ymax) - math.log10(ymin)) * 0.1)
+            plt.ylim(ymin / (1+margin), ymax * (1+margin))
 
     plt.tight_layout()
     plt.savefig(f"evaluate/distributional_paper/pareto_plots/{title}.pdf")
@@ -627,7 +753,7 @@ def flops_ratio_plot(
             # For baseline, just plot the raw ratios
             plt.scatter(baseline_ratio[baseline_finite_mask], baseline_mean_p[baseline_finite_mask],
                        color="red", s=60, alpha=0.9, marker="^",
-                       edgecolors='black', linewidth=0.5, label="Greedy", zorder=6)
+                       edgecolors='black', linewidth=0.5, label="Baseline", zorder=6)
 
     # Add subtle iso-FLOP lines (fitted quadratics)
     if n_total_samples == 500:  # Only if we have enough data points
@@ -690,9 +816,9 @@ def flops_ratio_plot(
     plt.close()
 
     if verbose:
-        print(f"FLOPS ratio range: {ratio_finite.min():.2e} to {ratio_finite.max():.2e}")
-        print(f"Mean p_harmful range: {mean_p_finite.min():.4f} to {mean_p_finite.max():.4f}")
-        print(f"Total FLOPS range: {total_flop_finite.min():.2e} to {total_flop_finite.max():.2e}")
+        logging.info(f"FLOPS ratio range: {ratio_finite.min():.2e} to {ratio_finite.max():.2e}")
+        logging.info(f"Mean p_harmful range: {mean_p_finite.min():.4f} to {mean_p_finite.max():.4f}")
+        logging.info(f"Total FLOPS range: {total_flop_finite.min():.2e} to {total_flop_finite.max():.2e}")
 
 
 def ideal_ratio_plot(
@@ -828,10 +954,10 @@ def ideal_ratio_plot(
     plt.plot(achieved_p_levels, ideal_ratios, 'b-', linewidth=3, label='Ideal Ratio (Min FLOPS)', marker='o', markersize=4, zorder=5)
 
     # Plot the maximum ratio explored curve (raw ratios)
-    plt.plot(achieved_p_levels, max_ratios, 'g--', linewidth=2, label='Max Ratio Explored', marker='s', markersize=3, zorder=5)
+    # plt.plot(achieved_p_levels, max_ratios, 'g--', linewidth=2, label='Max Ratio Explored', marker='s', markersize=3, zorder=5)
 
     # Plot the minimum ratio explored curve (raw ratios)
-    plt.plot(achieved_p_levels, min_ratios, 'r:', linewidth=2, label='Min Ratio Explored', marker='^', markersize=3, zorder=5)
+    # plt.plot(achieved_p_levels, min_ratios, 'r:', linewidth=2, label='Min Ratio Explored', marker='^', markersize=3, zorder=5)
 
     # Handle baseline if provided
     if baseline is not None:
@@ -848,7 +974,7 @@ def ideal_ratio_plot(
             # For baseline, just plot the raw ratios
             plt.scatter(baseline_mean_p[baseline_finite_mask], baseline_ratio[baseline_finite_mask],
                        color="red", s=80, alpha=0.9, marker="^",
-                       edgecolors='black', linewidth=0.5, label="Greedy", zorder=6)
+                       edgecolors='black', linewidth=0.5, label="Baseline", zorder=6)
 
     plt.xlabel("p_harmful", fontsize=14)
     plt.ylabel("Sampling FLOPS / Total FLOPS", fontsize=14)
@@ -864,13 +990,247 @@ def ideal_ratio_plot(
     plt.close()
 
     if verbose:
-        print(f"p_harmful range: {p_harmful_min:.4f} to {p_harmful_max:.4f}")
-        print(f"Ideal ratio range: {ideal_ratios.min():.4f} to {ideal_ratios.max():.4f}")
-        print(f"Max ratio range: {max_ratios.min():.4f} to {max_ratios.max():.4f}")
-        print(f"Min ratio range: {min_ratios.min():.4f} to {min_ratios.max():.4f}")
-        print(f"Total FLOPS landscape range: {landscape_total_flops.min():.2e} to {landscape_total_flops.max():.2e}")
-        print(f"Number of points in landscape: {len(landscape_total_flops)}")
-        print(f"Number of p_harmful levels with solutions: {len(achieved_p_levels)}")
+        logging.info(f"p_harmful range: {p_harmful_min:.4f} to {p_harmful_max:.4f}")
+        logging.info(f"Ideal ratio range: {ideal_ratios.min():.4f} to {ideal_ratios.max():.4f}")
+        logging.info(f"Max ratio range: {max_ratios.min():.4f} to {max_ratios.max():.4f}")
+        logging.info(f"Min ratio range: {min_ratios.min():.4f} to {min_ratios.max():.4f}")
+        logging.info(f"Total FLOPS landscape range: {landscape_total_flops.min():.2e} to {landscape_total_flops.max():.2e}")
+        logging.info(f"Number of points in landscape: {len(landscape_total_flops)}")
+        logging.info(f"Number of p_harmful levels with solutions: {len(achieved_p_levels)}")
+
+
+def flops_breakdown_plot(
+    results: dict[str,np.ndarray],
+    baseline: dict[str,np.ndarray] | None = None,
+    title: str = "FLOPS Breakdown Analysis",
+    sample_levels_to_plot: tuple[int, ...]|None = None,
+    metric: tuple[str, ...] = ('scores', 'strong_reject', 'p_harmful'),
+    cumulative: bool = False,
+    flops_per_step: int | None = None,
+    threshold: float|None = None,
+    color_scale: str = "linear",
+    verbose: bool = True,
+):
+    """
+    Plot optimization FLOPS vs sampling FLOPS with p_harmful as a 2D surface.
+    """
+    y, flops_optimization, flops_sampling_prefill_cache, flops_sampling_generation = preprocess_data(
+        results, metric, threshold, flops_per_step
+    )
+    n_runs, n_steps, n_total_samples = y.shape
+    if sample_levels_to_plot is None:
+        sample_levels_to_plot = generate_sample_sizes(n_total_samples)
+
+    pts = get_points(y, flops_optimization, flops_sampling_prefill_cache, flops_sampling_generation,
+                     return_ratio=False, cumulative=cumulative)
+    cost, step_idx, n_samp, mean_p = pts.T
+
+    # Calculate individual FLOP components
+    opt_flops = []
+    sampling_flops = []
+    p_harmful_vals = []
+    n_samples_vals = []
+
+    rng = np.random.default_rng(42)  # Fixed seed for reproducibility
+
+    for j in range(1, n_total_samples + 1, 1):
+        for i in range(0, n_steps, 1):
+            opt_flop = np.mean(flops_optimization[:, :i+1].sum(axis=1))
+            sampling_flop = np.mean(flops_sampling_generation[:, i]) * j + np.mean(flops_sampling_prefill_cache[:, i])
+            p_vals = []
+            for n in range(10):
+                # Calculate p_harmful value with same logic as other functions
+                if cumulative and i > 0:
+                    samples_up_to_now = y[:, :i, rng.choice(n_total_samples, size=1, replace=False)].max(axis=1)[:, 0]
+                    samples_at_end = y[:, i, rng.choice(n_total_samples, size=j, replace=False)].max(axis=-1)
+                    p_val = np.stack([samples_up_to_now, samples_at_end], axis=1).max(axis=1).mean(axis=0)
+                else:
+                    p_val = y[:, i, rng.choice(n_total_samples, size=j, replace=False)].max(axis=-1).mean(axis=0)
+                p_vals.append(p_val)
+
+            opt_flops.append(opt_flop+sampling_flop)
+            sampling_flops.append(sampling_flop)
+            p_harmful_vals.append(np.mean(p_vals))
+            n_samples_vals.append(j)
+
+    opt_flops = np.array(opt_flops)
+    sampling_flops = np.array(sampling_flops)
+    p_harmful_vals = np.array(p_harmful_vals)
+    n_samples_vals = np.array(n_samples_vals)
+
+    plt.figure(figsize=(12, 8))
+
+    # Create 2D surface plot using griddata interpolation
+    # Define grid for interpolation
+    sampling_min, sampling_max = sampling_flops.min(), sampling_flops.max()
+    opt_min, opt_max = opt_flops.min(), opt_flops.max()
+
+    # Use log space for sampling FLOPS if range is large
+    if sampling_max / sampling_min > 100:
+        sampling_grid = np.logspace(np.log10(sampling_min), np.log10(sampling_max), 100)
+    else:
+        sampling_grid = np.linspace(sampling_min, sampling_max, 100)
+
+    # Use log space for optimization FLOPS if range is large
+    if opt_max / opt_min > 100:
+        opt_grid = np.logspace(np.log10(opt_min), np.log10(opt_max), 100)
+    else:
+        opt_grid = np.linspace(opt_min, opt_max, 100)
+
+    Sampling_grid, Opt_grid = np.meshgrid(sampling_grid, opt_grid)
+
+    # Interpolate p_harmful values onto the grid
+    try:
+        p_harmful_grid = griddata(
+            (sampling_flops, opt_flops),
+            p_harmful_vals,
+            (Sampling_grid, Opt_grid),
+            method='linear',
+            fill_value=np.nan
+        )
+    except Exception as e:
+        if verbose:
+            logging.info(f"Linear interpolation failed: {e}, trying nearest neighbor")
+        p_harmful_grid = griddata(
+            (sampling_flops, opt_flops),
+            p_harmful_vals,
+            (Sampling_grid, Opt_grid),
+            method='nearest',
+            fill_value=0
+        )
+
+    # Create contour plot
+    levels = np.linspace(np.nanmin(p_harmful_vals), np.nanmax(p_harmful_vals), 50)
+    contour = plt.contourf(Sampling_grid, Opt_grid, p_harmful_grid, levels=levels,
+                          cmap='plasma', extend='both')
+
+
+    # Add colorbar
+    cbar = plt.colorbar(contour)
+    if threshold is None:
+        cbar.set_label(r"$p_{harmful}$", fontsize=14)
+    else:
+        cbar.set_label(f"ASR (threshold: {threshold})", fontsize=14)
+
+
+    # Add baseline if provided
+    if baseline is not None:
+        y_baseline, baseline_flops_optimization, baseline_flops_sampling_prefill_cache, baseline_flops_sampling_generation = preprocess_data(
+            baseline, metric, threshold, flops_per_step
+        )
+
+        baseline_pts = get_points(y_baseline, baseline_flops_optimization, baseline_flops_sampling_prefill_cache,
+                                baseline_flops_sampling_generation, return_ratio=False, cumulative=cumulative)
+        baseline_cost, baseline_step_idx, baseline_n_samp, baseline_mean_p = baseline_pts.T
+
+        # Calculate baseline FLOP components
+        baseline_opt_flops = []
+        baseline_sampling_flops = []
+
+        for i in range(0, y_baseline.shape[1], 1):
+            opt_flop = np.mean(baseline_flops_optimization[:, :i+1].sum(axis=1))
+            sampling_flop = np.mean(baseline_flops_sampling_generation[:, i]) * 1 + np.mean(baseline_flops_sampling_prefill_cache[:, i])
+
+            baseline_opt_flops.append(opt_flop+sampling_flop)
+            baseline_sampling_flops.append(sampling_flop)
+
+        baseline_opt_flops = np.array(baseline_opt_flops)
+        baseline_sampling_flops = np.array(baseline_sampling_flops)
+
+        plt.scatter(baseline_sampling_flops, baseline_opt_flops,
+                   s=60, alpha=0.9, marker="^",
+                   edgecolors='red', linewidth=2,
+                   color='white', label="Baseline")
+
+    plt.xlabel("Sampling FLOPS", fontsize=14)
+    plt.ylabel("Total FLOPS", fontsize=14)
+    plt.grid(True, alpha=0.3)
+    plt.title(title, fontsize=16)
+
+    # Use log scale for both axes if the range is large
+    if sampling_max / sampling_min > 100:
+        plt.xscale('log')
+    if opt_max / opt_min > 100:
+        plt.yscale('log')
+
+    plt.legend(loc='upper left')
+    plt.tight_layout()
+    plt.savefig(f"evaluate/distributional_paper/flops_breakdown/{title}.pdf", bbox_inches='tight')
+    plt.close()
+
+    if verbose:
+        logging.info(f"Sampling FLOPS range: {sampling_flops.min():.2e} to {sampling_flops.max():.2e}")
+        logging.info(f"Optimization FLOPS range: {opt_flops.min():.2e} to {opt_flops.max():.2e}")
+        logging.info(f"p_harmful range: {p_harmful_vals.min():.4f} to {p_harmful_vals.max():.4f}")
+        logging.info(f"Surface grid shape: {p_harmful_grid.shape}")
+        logging.info(f"Valid surface points: {np.sum(~np.isnan(p_harmful_grid))}/{p_harmful_grid.size}")
+
+def ridge_plot(
+    sampled_data: dict[str,np.ndarray],
+    model_title: str,
+    cfg: dict,
+):
+    sns.set_theme(style="white", rc={"axes.facecolor": (0, 0, 0, 0)})
+
+    # Create ridge plot for p_harmful distributions across steps
+    data = np.array(sampled_data[("scores", "strong_reject", "p_harmful")])
+
+    # Prepare data for ridge plot
+    ridge_data = []
+    step_idxs = [0] + list(generate_sample_sizes(data.shape[1]-1))
+    if data.shape[1]-1 not in step_idxs:
+        step_idxs.append(data.shape[1]-1)
+    for step_idx in step_idxs:
+        step_data = data[:, step_idx, :].flatten()  # Get p_harmful values for this step
+        # Round/bucketize the data into five values: 0, 0.25, 0.5, 0.75, 1.0
+        # step_data = np.round(step_data * 4) / 4
+        for value in step_data:
+            ridge_data.append({'step': f'Step {step_idx}', 'p_harmful': value})
+    df = pd.DataFrame(ridge_data)
+    print(df)
+
+    # Create ridge plot for p_harmful distributions across steps
+    unique_steps = sorted(df['step'].unique(), key=lambda x: int(x.split()[1]))
+    n_steps = len(unique_steps)
+    pal = sns.cubehelix_palette(n_steps, rot=-.25, light=.7)
+
+    # Initialize the FacetGrid object
+    g = sns.FacetGrid(df, row="step", hue="step", aspect=15, height=.5, palette=pal,
+                        row_order=unique_steps)
+
+    # Draw the densities
+    g.map(sns.kdeplot, "p_harmful", bw_adjust=0.5, clip_on=True, fill=True, alpha=1, linewidth=1.5)
+    g.map(sns.kdeplot, "p_harmful", bw_adjust=0.5, clip_on=True, color="w", lw=2)
+
+    # Add vertical lines for mean and median
+    def add_mean_lines(x, **kwargs):
+        ax = plt.gca()
+        mean_val = np.mean(x)
+        ax.axvline(mean_val, color='red', linestyle='-', alpha=0.7, linewidth=1, ymax=0.8)
+
+    g.map(add_mean_lines, "p_harmful")
+
+    # Add reference line at y=0
+    g.refline(y=0, linewidth=2, linestyle="-", color=None, clip_on=False)
+
+    # Set the subplots to overlap
+    g.figure.subplots_adjust(hspace=-.4)
+
+    # Remove axes details that don't play well with overlap
+    g.set_titles("")
+    g.set(yticks=[], ylabel="")
+    g.despine(bottom=True, left=True)
+    g.set(xlim=(0, 1))
+
+    # Add title to ridge plot
+    g.figure.suptitle(f'{model_title} - {cfg["title_suffix"]} - p_harmful Ridge Plot',
+                        fontsize=14, y=0.95)
+
+    # Save the ridge plot
+    filename = f"evaluate/distributional_paper/ridge_plots/{model_title}_{cfg['title_suffix']}.pdf"
+    g.figure.savefig(filename, dpi=300, bbox_inches='tight')
+    plt.close(g.figure)
+
 
 
 # Helper ---------------------------------------------------------------------------
@@ -889,7 +1249,7 @@ def run_analysis(
     analysis_type : str
         Type of analysis: "pareto", "flops_ratio", "ideal_ratio", "histogram", "histogram_2"
     """
-    print(f"{analysis_type.title()} Analysis:", atk_name, cfg.get("title_suffix", ""))
+    logging.info(f"{analysis_type.title()} Analysis: {atk_name} {cfg.get('title_suffix', '')}")
 
     # ---------- sampled run ----------
     sampled_data = fetch_data(model, cfg.get("attack_override", atk_name), cfg["sample_params"](),
@@ -1000,66 +1360,11 @@ def run_analysis(
         plt.savefig(filename, dpi=300, bbox_inches='tight')
         plt.close()
     elif analysis_type == "ridge":
-        sns.set_theme(style="white", rc={"axes.facecolor": (0, 0, 0, 0)})
-
-        # Create ridge plot for p_harmful distributions across steps
-        data = np.array(sampled_data[("scores", "strong_reject", "p_harmful")])
-
-        # Prepare data for ridge plot
-        ridge_data = []
-        for step_idx in [0, 1, 2, 5, 10, 20, 50, 99, 249]:
-            step_data = data[:, step_idx, :].flatten()  # Get p_harmful values for this step
-            # Round/bucketize the data into five values: 0, 0.25, 0.5, 0.75, 1.0
-            # step_data = np.round(step_data * 4) / 4
-            for value in step_data:
-                ridge_data.append({'step': f'Step {step_idx}', 'p_harmful': value})
-
-        df = pd.DataFrame(ridge_data)
-
-        # Create the ridge plot
-        plt.figure(figsize=(12, 8))
-
-        # Get unique steps and create color palette
-        unique_steps = sorted(df['step'].unique(), key=lambda x: int(x.split()[1]))
-        n_steps = len(unique_steps)
-        pal = sns.cubehelix_palette(n_steps, rot=-.25, light=.7)
-
-        # Initialize the FacetGrid object
-        g = sns.FacetGrid(df, row="step", hue="step", aspect=15, height=.5, palette=pal,
-                         row_order=unique_steps)
-
-        # Draw the densities
-        g.map(sns.kdeplot, "p_harmful", bw_adjust=0.5, clip_on=True, fill=True, alpha=1, linewidth=1.5)
-        g.map(sns.kdeplot, "p_harmful", bw_adjust=0.5, clip_on=True, color="w", lw=2)
-
-        # Add vertical lines for mean and median
-        def add_mean_lines(x, **kwargs):
-            ax = plt.gca()
-            mean_val = np.mean(x)
-            ax.axvline(mean_val, color='red', linestyle='-', alpha=0.7, linewidth=1, ymax=0.8)
-
-        g.map(add_mean_lines, "p_harmful")
-
-        # Add reference line at y=0
-        g.refline(y=0, linewidth=2, linestyle="-", color=None, clip_on=False)
-
-        # Set the subplots to overlap
-        g.figure.subplots_adjust(hspace=-.4)
-
-        # Remove axes details that don't play well with overlap
-        g.set_titles("")
-        g.set(yticks=[], ylabel="")
-        g.despine(bottom=True, left=True)
-        g.set(xlim=(0, 1))
-
-        # Add overall title
-        g.figure.suptitle(f'{model_title} - {cfg["title_suffix"]} - p_harmful Ridge Plot',
-                         fontsize=16, y=0.98)
-
-        # Save the plot
-        filename = f"evaluate/distributional_paper/ridge_plots/{model_title}_{cfg['title_suffix']}.pdf"
-        plt.savefig(filename, dpi=300, bbox_inches='tight')
-        plt.close()
+        ridge_plot(
+            sampled_data,
+            model_title,
+            cfg,
+        )
     elif analysis_type == "histogram_2":
         # Create histogram plot
         plt.figure(figsize=(10, 6))
@@ -1194,6 +1499,17 @@ def run_analysis(
         filename = f"evaluate/distributional_paper/histograms_2/{model_title}_{cfg['title_suffix']}.pdf"
         plt.savefig(filename, dpi=300, bbox_inches='tight')
         plt.close()
+    elif analysis_type == "flops_breakdown":
+        flops_breakdown_plot(
+            sampled_data,
+            baseline_data,
+            title=f"{model_title} {cfg['title_suffix']} FLOPS Breakdown",
+            cumulative=cfg["cumulative"],
+            metric=METRIC,
+            flops_per_step=flops_per_step_fn,
+            threshold=None,
+            color_scale="sqrt",
+        )
     else:
         raise ValueError(f"Unknown analysis type: {analysis_type}")
 
@@ -1205,8 +1521,9 @@ def run_analysis(
 
 MODELS = {
     "meta-llama/Meta-Llama-3.1-8B-Instruct": "Meta Llama 3.1 8B",
-    "google/gemma-3-1b-it": "Gemma 3.1 1B",
+    "google/gemma-3-1b-it": "Gemma 3 1B",
     "GraySwanAI/Llama-3-8B-Instruct-RR": "Llama 3 CB",
+    "Unispac/Llama2-7B-Chat-Augmented": "Llama 2 DeepAlign",
 }
 
 FLOPS_PER_STEP = {
@@ -1218,151 +1535,161 @@ FLOPS_PER_STEP = {
 
 # Attack-specific configuration -----------------------------------------------------
 ATTACKS = [
-    ("pair", dict(
-        title_suffix="PAIR",
-        cumulative=True,
-        sample_params=lambda: {
-            "generation_config": {"num_return_sequences": 50, "temperature": 0.7},
-        },
-        baseline_params=lambda: {
-            "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
-        },
-    )),
-    ("autodan", dict(
-        title_suffix="AutoDAN",
+    # ("pair", dict(
+    #     title_suffix="PAIR",
+    #     cumulative=True,
+    #     sample_params=lambda: {
+    #         "generation_config": {"num_return_sequences": 50, "temperature": 0.7},
+    #     },
+    #     baseline_params=lambda: {
+    #         "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
+    #     },
+    # )),
+    ("beast", dict(
+        title_suffix="BEAST",
         cumulative=False,
         sample_params=lambda: {
             "generation_config": {"num_return_sequences": 50, "temperature": 0.7},
-            "early_stopping_threshold": 0,
         },
         baseline_params=lambda: {
             "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
         },
     )),
-    ("gcg", dict(
-        title_suffix="GCG",
-        cumulative=False,
-        sample_params=lambda: {
-            "generation_config": {"num_return_sequences": 50, "temperature": 0.7},
-            "num_steps": 250,
-            "loss": "ce",
-            "token_selection": "default",
-            "use_prefix_cache": True,
-        },
-        baseline_params=lambda: {
-            "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
-            "num_steps": 250,
-            "loss": "ce",
-            "token_selection": "default",
-            "use_prefix_cache": True,
-        },
-    )),
-    ("gcg", dict(
-        title_suffix="GCG 500",
-        cumulative=False,
-        sample_params=lambda: {
-            "generation_config": {"num_return_sequences": 500, "temperature": 0.7},
-            "num_steps": 250,
-            "loss": "ce",
-            "token_selection": "default",
-            "use_prefix_cache": True,
-        },
-        baseline_params=lambda: {
-            "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
-            "num_steps": 250,
-            "loss": "ce",
-            "token_selection": "default",
-            "use_prefix_cache": True,
-        },
-    )),
-    ("gcg", dict(
-        title_suffix="GCG Entropy Loss",
-        cumulative=False,
-        sample_params=lambda: {
-            "generation_config": {"num_return_sequences": 50, "temperature": 0.7},
-            "num_steps": 250,
-            "loss": "entropy_adaptive",
-            "token_selection": "default",
-            "use_prefix_cache": True,
-        },
-        baseline_params=lambda: {
-            "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
-            "num_steps": 250,
-            "loss": "ce",
-            "token_selection": "default",
-            "use_prefix_cache": True,
-        },
-    )),
-    ("bon", dict(
-        title_suffix="BoN",
-        cumulative=False,
-        sample_params=lambda: {"num_steps": 1000, "generation_config": {"temperature": 0.7}},
-        baseline_params=lambda: {
-            # BoN's baseline is *Direct* with one deterministic sample
-            "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
-        },
-        baseline_attack="direct",
-        postprocess=lambda data, metric: data.__setitem__(
-            metric, np.array(data[metric]).transpose(0, 2, 1)
-        ),
-    )),
-    ("bon", dict(
-        title_suffix="BoN Repro",
-        cumulative=False,
-        sample_params=lambda: {"num_steps": 1000, "generation_config": {"temperature": 1.0}},
-        baseline_params=lambda: {
-            # BoN's baseline is *Direct* with one deterministic sample
-            "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
-        },
-        baseline_attack="direct",
-        postprocess=lambda data, metric: data.__setitem__(
-            metric, np.array(data[metric]).transpose(0, 2, 1)
-        ),
-    )),
-    ("direct", dict(
-        title_suffix="Direct",
-        cumulative=True,
-        sample_params=lambda: {
-            "generation_config": {"num_return_sequences": 1000, "temperature": 0.7},
-        },
-        baseline_params=lambda: {
-            "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
-        },
-        skip_if_empty=True,  # gracefully continue if no paths were found
-    )),
-    ("direct", dict(
-        title_suffix="Direct temp 1.0",
-        cumulative=True,
-        sample_params=lambda: {
-            "generation_config": {"num_return_sequences": 1000, "temperature": 1.0},
-        },
-        baseline_params=lambda: {
-            "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
-        },
-        skip_if_empty=True,  # gracefully continue if no paths were found
-    )),
+    # ("autodan", dict(
+    #     title_suffix="AutoDAN",
+    #     cumulative=False,
+    #     sample_params=lambda: {
+    #         "generation_config": {"num_return_sequences": 50, "temperature": 0.7},
+    #         "early_stopping_threshold": 0,
+    #     },
+    #     baseline_params=lambda: {
+    #         "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
+    #     },
+    # )),
+    # ("gcg", dict(
+    #     title_suffix="GCG",
+    #     cumulative=False,
+    #     sample_params=lambda: {
+    #         "generation_config": {"num_return_sequences": 50, "temperature": 0.7},
+    #         "num_steps": 250,
+    #         "loss": "ce",
+    #         "token_selection": "default",
+    #         "use_prefix_cache": True,
+    #     },
+    #     baseline_params=lambda: {
+    #         "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
+    #         "num_steps": 250,
+    #         "loss": "ce",
+    #         "token_selection": "default",
+    #         "use_prefix_cache": True,
+    #     },
+    # )),
+    # ("gcg", dict(
+    #     title_suffix="GCG 500",
+    #     cumulative=False,
+    #     sample_params=lambda: {
+    #         "generation_config": {"num_return_sequences": 500, "temperature": 0.7},
+    #         "num_steps": 250,
+    #         "loss": "ce",
+    #         "token_selection": "default",
+    #         "use_prefix_cache": True,
+    #     },
+    #     baseline_params=lambda: {
+    #         "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
+    #         "num_steps": 250,
+    #         "loss": "ce",
+    #         "token_selection": "default",
+    #         "use_prefix_cache": True,
+    #     },
+    # )),
+    # ("gcg", dict(
+    #     title_suffix="GCG Entropy Loss",
+    #     cumulative=False,
+    #     sample_params=lambda: {
+    #         "generation_config": {"num_return_sequences": 50, "temperature": 0.7},
+    #         "num_steps": 250,
+    #         "loss": "entropy_adaptive",
+    #         "token_selection": "default",
+    #         "use_prefix_cache": True,
+    #     },
+    #     baseline_params=lambda: {
+    #         "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
+    #         "num_steps": 250,
+    #         "loss": "ce",
+    #         "token_selection": "default",
+    #         "use_prefix_cache": True,
+    #     },
+    # )),
+    # ("bon", dict(
+    #     title_suffix="BoN",
+    #     cumulative=False,
+    #     sample_params=lambda: {"num_steps": 1000, "generation_config": {"temperature": 0.7}},
+    #     baseline_params=lambda: {
+    #         # BoN's baseline is *Direct* with one deterministic sample
+    #         "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
+    #     },
+    #     baseline_attack="direct",
+    #     postprocess=lambda data, metric: data.__setitem__(
+    #         metric, np.array(data[metric]).transpose(0, 2, 1)
+    #     ),
+    # )),
+    # ("bon", dict(
+    #     title_suffix="BoN Repro",
+    #     cumulative=False,
+    #     sample_params=lambda: {"num_steps": 1000, "generation_config": {"temperature": 1.0}},
+    #     baseline_params=lambda: {
+    #         # BoN's baseline is *Direct* with one deterministic sample
+    #         "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
+    #     },
+    #     baseline_attack="direct",
+    #     postprocess=lambda data, metric: data.__setitem__(
+    #         metric, np.array(data[metric]).transpose(0, 2, 1)
+    #     ),
+    # )),
+    # ("direct", dict(
+    #     title_suffix="Direct",
+    #     cumulative=True,
+    #     sample_params=lambda: {
+    #         "generation_config": {"num_return_sequences": 1000, "temperature": 0.7},
+    #     },
+    #     baseline_params=lambda: {
+    #         "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
+    #     },
+    #     skip_if_empty=True,  # gracefully continue if no paths were found
+    # )),
+    # ("direct", dict(
+    #     title_suffix="Direct temp 1.0",
+    #     cumulative=True,
+    #     sample_params=lambda: {
+    #         "generation_config": {"num_return_sequences": 1000, "temperature": 1.0},
+    #     },
+    #     baseline_params=lambda: {
+    #         "generation_config": {"num_return_sequences": 1, "temperature": 0.0},
+    #     },
+    #     skip_if_empty=True,  # gracefully continue if no paths were found
+    # )),
 ]
 
 METRIC = ("scores", "strong_reject", "p_harmful")
 GROUP_BY = {"model", "attack_params"}
-DATASET_IDX = list(range(50))
+DATASET_IDX = list(range(75))
 
 def main(fail: bool = False):
-    # for analysis_type in ["pareto", "flops_ratio", "ideal_ratio", "histogram", "histogram_2", "ridge"]:
-    for analysis_type in ["flops_ratio", "ideal_ratio", "histogram", "histogram_2", "ridge"]:
-        print("\n" + "="*80)
-        print(f"GENERATING {analysis_type.upper().replace('_', ' ')} PLOTS")
-        print("="*80)
+    for analysis_type in ["pareto", "flops_ratio", "ideal_ratio", "histogram", "histogram_2", "ridge", "flops_breakdown"]:
+    # for analysis_type in [ "ridge"]:
+        logging.info("\n" + "="*80)
+        logging.info(f"GENERATING {analysis_type.upper().replace('_', ' ')} PLOTS")
+        logging.info("="*80)
 
         for model_key, model_title in MODELS.items():
-            print("Model:", model_key)
+            logging.info(f"Model: {model_key}")
             for atk_name, atk_cfg in ATTACKS:
                 try:
                     run_analysis(model_key, model_title, atk_name, atk_cfg, analysis_type)
                 except Exception as e:
                     if fail:
                         raise e
-                    print(f"Error running {analysis_type} analysis for {atk_name}, "
+                    logging.info(f"Error running {analysis_type} analysis for {atk_name}, "
                         f"cfg: {atk_cfg.get('title_suffix', 'unknown')}: {e}")
 
 if __name__ == "__main__":
