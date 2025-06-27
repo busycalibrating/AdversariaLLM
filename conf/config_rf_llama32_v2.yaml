@@ -18,22 +18,15 @@ hydra:
   sweep:
     dir: ${root_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}/
 
-name: llama3-2-rf-v2
-root_dir: ${oc.env:PWD}
-save_dir: ${root_dir}/outputs/rf_test/v2
-log_file_path: ${save_dir}/${name}/${attack_name}/run-${datasets.rf_test.idx}__${now:%H-%M-%S}.json 
+attacks:
+  gcg:
+    num_steps: 300
 
-log_toks_strs: True
-hf_offline_mode: True
-# attacks:
-#   gcg:
-#     num_steps: 300
 datasets:
   rf_test:
     batch: 10
     path: ${oc.env:HOME}/harmful-harmless-eval/
 
-# Define the model lists for each attack type (hidden from final config)
 _gcg_models: 
   - ${models.${model_name}.id}
   - ${models.${model_name}.tokenizer_id}
@@ -44,9 +37,17 @@ _pair_models:
   - lmsys/vicuna-13b-v1.5
   - cais/HarmBench-Llama-2-13b-cls
 
+# automatically select models based on attack_name
 slurm_copy_hf_cache:
-  # Automatically select models based on attack_name
   models: ${oc.select:_${attack_name}_models,${_gcg_models}}
+
+name: ${model_name}
+root_dir: ${oc.env:PWD}
+save_dir: ${root_dir}/outputs/rf_test/v2
+log_file_path: ${save_dir}/${name}/${attack_name}/run-${datasets.rf_test.idx}__${now:%H-%M-%S}.json 
+
+log_toks_strs: True
+hf_offline_mode: True
 
 # overrides for parallelism
 attack_name: gcg # pair
