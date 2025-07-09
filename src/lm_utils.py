@@ -1544,6 +1544,9 @@ class TextGenerator(ABC):
     """
     Base class for text generation.
     This class defines the interface for text generation backends.
+    The idea is to be able to use an API solely via this interface, such that you can just switch the backend to a local model and be able to use it like an API.
+    This way, you can easily write code for both local and API-based text generation.
+
     Subclasses must implement the `generate` method and override the `__init__` method.
     """
 
@@ -1580,7 +1583,8 @@ class TextGenerator(ABC):
 
 class HFLocalTextGen(TextGenerator):
     """
-    A local backend for text generation using Hugging Face transformers.
+    A local backend for text generation using Hugging Face transformers based on the `generate_ragged_batched` function.
+    This class is essentially a wrapper around the Hugging Face transformers library to provide a consistent interface for text generation.
     """
 
     def __init__(
@@ -1744,7 +1748,7 @@ class APITextGen(TextGenerator):
                 resp = [completion.choices[i].message.content for i in range(len(completion.choices))]
                 return resp
             except Exception as e:
-                print(f"GPT_CALL Error: {self.model_name}:{e}")
+                logging.info(f"GPT_CALL Error: {self.model_name}:{e}")
                 time.sleep(self.CALL_SLEEP)
                 continue
         return []
