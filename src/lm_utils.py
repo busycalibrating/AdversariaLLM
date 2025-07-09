@@ -1740,10 +1740,7 @@ class APITextGen(TextGenerator):
     def _api_call(self, messages: list, **kwargs) -> list[str]:
         for _ in range(3):
             try:
-                if "o1-" in self.model_name:
-                    completion = self.client.chat.completions.create(model=self.model_name, messages=messages, **kwargs)
-                else:
-                    completion = self.client.chat.completions.create(model=self.model_name, messages=messages, **kwargs)
+                completion = self.client.chat.completions.create(model=self.model_name, messages=messages, **kwargs)
                 resp = [completion.choices[i].message.content for i in range(len(completion.choices))]
                 return resp
             except Exception as e:
