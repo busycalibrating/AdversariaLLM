@@ -82,10 +82,11 @@ class ActorAttack(Attack[ActorAttackResult]):
     def __init__(self, config):
         super().__init__(config)
 
-        self.max_new_tokens = config.max_new_tokens
+        self.generation_config = config.generation_config
         self.actor_num = config.actor_num
         self.early_stop = config.early_stop
         self.dynamic_modify = config.dynamic_modify
+        self.attacker_max_new_tokens = 2048
 
     def run(
         self,
@@ -98,13 +99,14 @@ class ActorAttack(Attack[ActorAttackResult]):
         logging.info(f"BASE_URL_GPT: {repr(base_url)}")
 
         target_model = ExtendedLocalTextGenerator(
-            model, tokenizer, default_generate_kwargs={"max_new_tokens": self.max_new_tokens}
+            model, tokenizer, default_generate_kwargs=self.generation_config
         )
 
         if self.config.attack_model.use_api:
+            self.generation_config.pop("top_k") # top_k is not supported for the api models
             attack_model = ExtendedAPITextGenerator(
                 self.config.attack_model.api_model_name,
-                default_generate_kwargs={"temperature": self.config.attack_model.temperature},
+                default_generate_kwargs=self.generation_config,
             )
         else:
             if self.config.attack_model.id == model.model.name_or_path:
@@ -112,7 +114,7 @@ class ActorAttack(Attack[ActorAttackResult]):
             else:
                 attack_model, attack_tokenizer = load_model_and_tokenizer(self.config.attack_model)
                 attack_model = ExtendedLocalTextGenerator(
-                    attack_model, attack_tokenizer, default_generate_kwargs={"max_new_tokens": self.max_new_tokens}
+                    attack_model, attack_tokenizer, default_generate_kwargs={"max_new_tokens": self.attacker_max_new_tokens}
                 )
 
         if self.config.judge_model.use_api:
