@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Implementation of the Actor Attack.
 
