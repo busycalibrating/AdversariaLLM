@@ -73,3 +73,10 @@ uv pip install vllm peft bitsandbytes
 uv pip install -e ../jailbreakbench # make sure you have a local jailbreakbench installed with the litellm fix
 uv pip install flash-attn --no-build-isolation
 ```
+
+### Run jobs
+
+```bash
+# in DRAC cluster 
+python run_attacks.py --config-name=config_rf_llama32_v3 --multirun hydra/launcher=drac_gpu ++root_dir=/home/ddobre/llm-quick-check ++model_name=redflag-tokens/llama3-2-rf-v3 ++datasets.rf_test.batch=10 ++attack_name=gcg
+```

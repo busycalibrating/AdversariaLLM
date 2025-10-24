@@ -26,9 +26,12 @@ def _get_selected_idx(idx, batch: int = None, max_dataset_size: int = None):
         return selected_idx
     return idx
 
-def _shuffle_and_select_idx(selected_idx: int|Sequence, seed: int, dataset_size: int):
-    torch.manual_seed(seed)
-    idx = torch.randperm(dataset_size)
+def _shuffle_and_select_idx(selected_idx: int|Sequence, seed: int | None, dataset_size: int):
+    if seed is not None:
+        torch.manual_seed(seed)
+        idx = torch.randperm(dataset_size)
+    else:
+        idx = torch.arange(dataset_size)
 
     # We keep this shuffle for backwards compatibility
     if isinstance(selected_idx, int):
@@ -153,6 +156,41 @@ class RFTestDataset(Dataset):
         messages = {"role": "user", "content": msg}
         target = self.targets[idx] 
         return messages, target
+
+@dataclass
+class RFEvalConfig(BaseDataConfig):
+    name: str
+    path: str
+
+
+class RFEvalDataset(Dataset):
+    def __init__(self, config: RFEvalConfig):
+        self.config = config
+        # TODO: finish this implementation
+        # ds = load_dataset("redflag-tokens/data_v2", data_files="eval/harm_comp-harmbench.jsonl", split="train")
+        _path = config.path if config.path else "redflag-tokens/data_v2"
+        dataset = load_dataset(_path, "harmful")['test']
+        messages = [d["Behavior"] for d in dataset]
+        targets = [d["Prefilling"] for d in dataset]
+
+        # shuffle
+        selected_idx = _get_selected_idx(config.idx, config.batch, len(dataset))
+        idx = _shuffle_and_select_idx(selected_idx, config.seed, len(dataset))
+
+        self.messages = [messages[i] for i in idx]
+        self.targets = [targets[i] for i in idx]
+
+    def __len__(self):
+        return len(self.messages)
+
+    def __getitem__(self, idx: int) -> tuple[dict[str, str], str]:
+        msg = self.messages[idx]
+        # messages = [[{"role": "user", "content": m}] for m in msg]  # TODO: is this safe?
+        messages = {"role": "user", "content": msg}
+        target = self.targets[idx] 
+        return messages, target
+
+
 
 
 @dataclass
