@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 Implementation of the Actor Attack.
 
@@ -11,15 +9,6 @@ Implementation of the Actor Attack.
 }
 
 Implementation adapted from the authors' code: https://github.com/AI45Lab/ActorAttack
-"""
-
-"""
-@article{ren2024actorbreaker,
-  title={LLMs know their vulnerabilities: Uncover Safety Gaps through Natural Distribution Shifts},
-  author={Ren, Qibing and Li, Hao and Liu, Dongrui and Xie, Zhanxu and Lu, Xiaoya and Qiao, Yu and Sha, Lei and Yan, Junchi and Ma, Lizhuang and Shao, Jing},
-  journal={arXiv preprint arXiv:2410.10700},
-  year={2024}
-}
 """
 
 import copy

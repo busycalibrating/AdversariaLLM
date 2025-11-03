@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass, field
 
 import torch
-import transformers
+from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 from .attack import (Attack, AttackResult, AttackStepResult, GenerationConfig,
                      SingleAttackRunResult)
@@ -26,11 +26,11 @@ class PrefillingAttack(Attack):
     def __init__(self, config: PrefillingConfig):
         super().__init__(config)
 
-    @torch.no_grad
+    @torch.no_grad()
     def run(
         self,
-        model: transformers.AutoModelForCausalLM,
-        tokenizer: transformers.AutoTokenizer,
+        model: PreTrainedModel,
+        tokenizer: PreTrainedTokenizerBase,
         dataset: PromptDataset,
     ) -> AttackResult:
         t_start = time.time()

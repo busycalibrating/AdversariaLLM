@@ -147,7 +147,7 @@ def safe_parse_json_responses(convs: list[Conversation], attempt: int, dummy_res
     """ if dummy_result is None, None will be returned on parse error"""
 
     responses = [conv[-1]["content"] for conv in convs]
-    jsons = [None] * len(responses)
+    jsons: list[dict | None] = [None] * len(responses)
     parse_unsuccessful_map = [False] * len(responses)
     error_messages = []
 

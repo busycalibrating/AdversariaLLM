@@ -102,7 +102,17 @@ llm-quick-check/
 │   │   ├── pair.py       # PAIR attack
 │   │   ├── autodan.py    # AutoDAN attack
 │   │   └── ...
-│   ├── dataset.py        # Dataset handling
+│   ├── dataset/          # Dataset handling (modular)
+│   │   ├── prompt_dataset.py      # Base dataset class
+│   │   ├── adv_behaviors.py       # AdvBench behaviors
+│   │   ├── jbb_behaviors.py       # JailbreakBench
+│   │   ├── strong_reject.py       # StrongREJECT
+│   │   ├── or_bench.py            # ORBench
+│   │   ├── refusal_direction.py   # RefusalDirection
+│   │   ├── xs_test.py             # XSTest
+│   │   ├── alpaca.py              # Alpaca
+│   │   ├── mmlu.py                # MMLU
+│   │   └── ...
 │   ├── io_utils/         # I/O utilities
 │   ├── lm_utils/         # Language model utilities
 │   └── types.py          # Type definitions
@@ -170,6 +180,7 @@ Datasets
 - [RefusalDirection](https://proceedings.neurips.cc/paper_files/paper/2024/hash/f545448535dfde4f9786555403ab7c49-Abstract-Conference.html)
 - [StrongREJECT](https://github.com/dsbowen/strong_reject)
 - [XSTest](https://arxiv.org/abs/2308.01263)
+- [MMLU](https://arxiv.org/abs/2009.03300)
 
 Attacks
 - [ActorBreaker](https://arxiv.org/abs/2410.10700)
@@ -177,6 +188,7 @@ Attacks
 - [AutoDAN](https://arxiv.org/abs/2310.04451)
 - [BEAST](https://arxiv.org/abs/2402.15570)
 - [Best-of-N Jailbreaking](https://arxiv.org/abs/2412.03556)
+- [Crescendo](https://www.usenix.org/system/files/usenixsecurity25-russinovich.pdf)
 - [GCG](https://arxiv.org/abs/2307.15043)
 - [GCG (REINFORCE)](https://arxiv.org/abs/2502.17254)
 - [PAIR](https://arxiv.org/abs/2310.08419)
@@ -186,3 +198,5 @@ Attacks
 
 Other
 - [JudgeZoo](https://github.com/LLM-QC/judgezoo) for judge implementations
+
+TODO: create "models" module for generation?

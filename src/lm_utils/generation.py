@@ -408,8 +408,10 @@ def generate_ragged(
                     # we need to iterate like this because key_cache and value_cache
                     # dont have a setter method
                     for layer in past_key_values.layers:
-                        layer.keys = layer.keys.to(model.device)
-                        layer.values = layer.values.to(model.device)
+                        if layer.keys is not None:
+                            layer.keys = layer.keys.to(model.device)
+                        if layer.values is not None:
+                            layer.values = layer.values.to(model.device)
 
                 if next_token_idx.min() > 1:
                     model(

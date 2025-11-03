@@ -1,4 +1,12 @@
-"""Cleaned-up random search attack
+"""
+Cleaned-up random search attack inspired by baseline comparisons in the GCG paper.
+
+@article{zou2023universal,
+  title={Universal and Transferable Adversarial Attacks on Aligned Language Models},
+  author={Zou, Andy and Wang, Zifan and Carlini, Nicholas and Nasr, Milad and Kolter, J Zico and Fredrikson, Matt},
+  journal={arXiv preprint arXiv:2307.15043},
+  year={2023}
+}
 
 Adds explicit hyper-parameters
   • `neighborhood_radius`    - max token flips per neighbour
@@ -210,9 +218,9 @@ class RandomSearchAttack(Attack):
                 tgt_len = tgt_.sum(dim=1)
                 return torch.where(tgt_len > 0, lp_per.sum(dim=1) / tgt_len, torch.zeros_like(tgt_len, dtype=torch.float))
 
-            cand_loss = with_max_batchsize(
+            cand_loss: torch.Tensor = with_max_batchsize(
                 _chunk_loss, cand_stack, attn_stack, y_stack, tgt_stack
-            )
+            )  # type: ignore
             cand_loss = cand_loss.view(repeat_factor, num_examples)  # (k, B)
 
             # ---- Greedy accept if better ---------------------------------
@@ -249,7 +257,7 @@ class RandomSearchAttack(Attack):
             model,
             tokenizer,
             token_list=flat_tokens,
-            initial_batch_size=self.batch_size,
+            initial_batch_size=len(flat_tokens),
             max_new_tokens=self.config.generation_config.max_new_tokens,
             temperature=self.config.generation_config.temperature,
             top_p=self.config.generation_config.top_p,

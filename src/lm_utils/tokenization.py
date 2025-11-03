@@ -134,7 +134,7 @@ def prepare_conversation(
     tokenizer: PreTrainedTokenizerBase,
     conversation: Conversation,
     conversation_opt: Conversation | None = None,
-) -> list[tuple[torch.LongTensor, torch.LongTensor, torch.LongTensor, torch.LongTensor, torch.LongTensor, torch.LongTensor]]:
+) -> list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]]:
     """For many attacks, we need to figure out how exactly to tokenize the input.
     Since only some models add a space or various control tokens, we have to figure
     out the exact format. We want to make sure that the first generated token is
@@ -149,11 +149,20 @@ def prepare_conversation(
 
     Treating prompt and attack separately is important for optimization, as we only
     want to optimize the attack part.
+    TODO: should probably move to a more general api which uses something like:
+    [
+        {"role": "user", "content": ["prefix", "Hello, how are you?", "suffix"]},
+        {"role": "assistant", "content": ["I'm doing well, thank you!", "suffix"]},
+        {"role": "user", "content": "What is the capital of France?"},
+        {"role": "assistant", "content": "The capital of France is Paris."}
+    ]
+    this would allow more granular control over the prompt segments.
+
     Parameters:
     - tokenizer: The tokenizer to use.
     - conversation: The conversation to use. Last message must be assistant message.
     - conversation_opt: The conversation to use for the attack. Parts of the string in
-                        this conversation that are not in conversation are used as attack.
+                        this conversation that are not in `conversation` are used as attack.
 
     Returns:
     - pre_tokens: The tokens before the prompt.
@@ -383,9 +392,9 @@ def get_tokenized_no_attack(prompt, target, tokenizer):
     return tokenize_chats([chat_no_attack], tokenizer)[0]
 
 
-# Generate random messages to find tokenizer patterns, this is ugly but fast
 @lru_cache()
 def get_pre_post_suffix_tokens(tokenizer, num_messages):
+    # Generate random messages to find tokenizer patterns, this is ugly but fast
     test_chats = _make_random_chats(num_messages)
     test_tokenized = tokenize_chats(test_chats, tokenizer)
     return _extract_prefix_middle_suffix(test_tokenized)
@@ -459,8 +468,8 @@ def filter_suffix(
         except TokenMergeError:
             continue
 
-        prefix_match = all([torch.equal(ids[j][0][i] if ids[j][0] is not None else torch.empty(0), recon_ids[j][1]) for j in range(len(recon_ids))])
-        suffix_match = all([torch.equal(ids[j][1][i] if ids[j][1] is not None else torch.empty(0), recon_ids[j][3]) for j in range(len(recon_ids))])
+        prefix_match = all([torch.equal(ids[j][0][i] if ids[j][0] is not None else torch.empty(0), recon_ids[j][1]) for j in range(len(recon_ids))])  # type: ignore
+        suffix_match = all([torch.equal(ids[j][1][i] if ids[j][1] is not None else torch.empty(0), recon_ids[j][3]) for j in range(len(recon_ids))])  # type: ignore
         if prefix_match and suffix_match:
             retain_idx.append(i)
 

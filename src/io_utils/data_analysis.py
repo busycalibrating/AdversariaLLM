@@ -61,7 +61,7 @@ def _gather(value, prefix: tuple[str], out):
     and store it under its full path.
     """
     # leaf node: number or list of numbers
-    if isinstance(value, (int, float, str)) or isinstance(value, list) and isinstance(value[0], (int, float, str)):
+    if isinstance(value, (int, float, str)) or isinstance(value, list) and value and isinstance(value[0], (int, float, str)):
         if len(prefix) == 1:
             prefix = prefix[0]
         out[prefix].append(value)

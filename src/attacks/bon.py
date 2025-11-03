@@ -19,6 +19,7 @@ import transformers
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
 
+from ..dataset import PromptDataset
 from ..lm_utils import generate_ragged_batched, get_losses_batched, prepare_conversation
 from ..types import Conversation
 from .attack import Attack, AttackResult, AttackStepResult, GenerationConfig, SingleAttackRunResult
@@ -138,7 +139,7 @@ class BonAttack(Attack):
         self,
         model: transformers.AutoModelForCausalLM,
         tokenizer: PreTrainedTokenizer,
-        dataset: torch.utils.data.Dataset,
+        dataset: PromptDataset,
     ) -> AttackResult:
         """Run the Best-of-N attack on the given dataset.
 

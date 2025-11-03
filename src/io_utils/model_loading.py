@@ -91,8 +91,9 @@ def load_model_and_tokenizer(
                 low_cpu_mem_usage=True,
                 device_map="auto",
             ).eval()
+    model: PreTrainedModel
     if model_params.compile:
-        model = torch.compile(model)
+        model = torch.compile(model)  # type: ignore
 
     model.config.short_name = model_params.short_name
     model.config.developer_name = model_params.developer_name
@@ -138,9 +139,8 @@ def load_model_and_tokenizer(
         case path if "gemma-2" in path:
             tokenizer.model_max_length = 8192
         case path if "gemma-3" in path:
-            tokenizer.model_max_length = (
-                32768  # true ctx is 128k but we dont have that much memory
-            )
+            # true ctx is 128k but we don't have that much memory
+            tokenizer.model_max_length = 32768
         case path if "zephyr" in path:
             tokenizer.model_max_length = 32768
         case path if "openai/gpt-oss" in path:
@@ -155,6 +155,8 @@ def load_model_and_tokenizer(
 
     if not tokenizer.pad_token:
         tokenizer.pad_token = tokenizer.eos_token
+
+    assert tokenizer.pad_token is not None, "pad_token is not set"
     return model, tokenizer
 
 

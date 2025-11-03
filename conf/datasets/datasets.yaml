@@ -16,6 +16,11 @@ jbb_behaviors:
   seed: 0
   idx: null
   shuffle: true
+mmlu:
+  name: mmlu
+  seed: 0
+  idx: null
+  shuffle: true
 or_bench:
   name: or_bench
   seed: 0

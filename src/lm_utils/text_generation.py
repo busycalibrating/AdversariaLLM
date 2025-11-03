@@ -5,25 +5,25 @@ This module provides a unified interface for text generation that supports
 both local Hugging Face models and API-based generation services.
 """
 
-import inspect
+from abc import ABC, abstractmethod
 import copy
+from dataclasses import dataclass, field
+import inspect
 import logging
 import os
 import time
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Any, List, Optional, Callable
+from typing import Any, Callable, List, Optional
 
-import torch
 from openai import OpenAI
+import torch
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
-from ..types import Conversation
 from ..io_utils.json_utils import safe_parse_json_responses
+from ..types import Conversation
 from .filters import forbid_extras
 from .generation import generate_ragged_batched
-from .utils import select_active_subset, update_masked_subset
 from .tokenization import prepare_conversation
+from .utils import select_active_subset, update_masked_subset
 
 # Retry policy definitions are kept here to avoid scattered backbone-specific configuration.
 
@@ -100,8 +100,8 @@ class LocalRetryPolicy:
 
 @dataclass
 class RetryPolicy:
-    api: APIRetryPolicy = APIRetryPolicy()
-    local: LocalRetryPolicy = LocalRetryPolicy()
+    api: APIRetryPolicy = field(default_factory=APIRetryPolicy)
+    local: LocalRetryPolicy = field(default_factory=LocalRetryPolicy)
 
     def merge(self, overrides: Optional[RetryOverrides]) -> "RetryPolicy":
         return RetryPolicy(
@@ -192,10 +192,10 @@ class TextGenerator(ABC):
 
     def __init__(
         self,
-        num_return_sequences: int = None,
-        max_new_tokens: int = None,
-        temperature: float = None,
-        top_p: float = None,
+        num_return_sequences: Optional[int] = None,
+        max_new_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
         filters: Optional[list[dict]] = None,
     ):
         # no default values are given, as the default values are in the backends and should not be overwritten
@@ -210,10 +210,10 @@ class TextGenerator(ABC):
     def generate(
         self,
         convs: list[Conversation],
-        num_return_sequences: int = None,
-        max_new_tokens: int = None,
-        temperature: float = None,
-        top_p: float = None,
+        num_return_sequences: Optional[int] = None,
+        max_new_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
         filters: Optional[list[dict]] = None,
         retry_overrides: Optional[RetryOverrides] = None,
         **kwargs: Any,
@@ -245,10 +245,10 @@ class LocalTextGenerator(TextGenerator):
     def generate(
         self,
         convs: list[Conversation],
-        num_return_sequences: int = None,
-        max_new_tokens: int = None,
-        temperature: float = None,
-        top_p: float = None,
+        num_return_sequences: Optional[int] = None,
+        max_new_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
         filters: Optional[list[dict]] = None,
         retry_overrides: Optional[RetryOverrides] = None,
         **kwargs: Any,
@@ -312,7 +312,7 @@ class LocalTextGenerator(TextGenerator):
 
         return result
 
-    def _batch_tokenize(self, convs: list[Conversation]) -> list[torch.LongTensor]:
+    def _batch_tokenize(self, convs: list[Conversation]) -> list[torch.Tensor]:
         token_list = []
         for conv in convs:
             next_tokens = self._tokenize(conv)
@@ -320,7 +320,7 @@ class LocalTextGenerator(TextGenerator):
 
         return token_list
 
-    def _tokenize(self, conv: Conversation) -> list[torch.LongTensor]:
+    def _tokenize(self, conv: Conversation) -> list[torch.Tensor]:
         conv = copy.deepcopy(conv)
         if conv[-1]["role"] == "user":
             conv.append({"role": "assistant", "content": ""})
@@ -364,10 +364,10 @@ class APITextGenerator(TextGenerator):
     def generate(
         self,
         convs: list[Conversation],
-        num_return_sequences: int = None,
-        max_new_tokens: int = None,
-        temperature: float = None,
-        top_p: float = None,
+        num_return_sequences: Optional[int] = None,
+        max_new_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
         filters: Optional[list[dict]] = None,
         retry_overrides: Optional[RetryOverrides] = None,
         **kwargs: Any,
@@ -548,7 +548,7 @@ Only return the corrected JSON."""
     return jsons, convs
 
 
-def check_json_content(jsons: list[dict], check_json_func: callable, dummy_result: None | dict = None) -> list[bool]:
+def check_json_content(jsons: list[dict], check_json_func: Callable[[dict], None], dummy_result: Optional[dict] = None) -> tuple[list[dict], list[bool]]:
     check_unsuccessful_map = [False] * len(jsons)
     for i, item in enumerate(jsons):
         try:
@@ -562,7 +562,7 @@ def check_json_content(jsons: list[dict], check_json_func: callable, dummy_resul
     return jsons, check_unsuccessful_map
 
 def check_json_content_with_regenerate(
-    model: TextGenerator, jsons: list[dict], check_json_func: callable, convs: list[Conversation], regenerate=True, filters: list[dict] | None = None, dummy_result: dict = None
+    model: TextGenerator, jsons: list[dict], check_json_func: Callable[[dict], None], convs: list[Conversation], regenerate=True, filters: list[dict] | None = None, dummy_result: Optional[dict] = None
 ):
     """Check JSON content against validation function with retry logic."""
     JSON_CONTENT_PROMPT = f"""The format of the previous JSON response is incorrect. Please ensure that the JSON passes this check:\n{inspect.getsource(check_json_func)}"""
@@ -594,7 +594,7 @@ def check_json_content_with_regenerate(
 
 
 def handle_json_response(
-    model: TextGenerator, convs: list[Conversation], check_json_func: callable, dummy_result: dict, filters: list[dict] | None = None
+    model: TextGenerator, convs: list[Conversation], check_json_func: Callable[[dict], None], dummy_result: dict, filters: list[dict] | None = None
 ) -> tuple[list[dict], list[Conversation]]:
     """Handle JSON response parsing with validation and error recovery."""
 

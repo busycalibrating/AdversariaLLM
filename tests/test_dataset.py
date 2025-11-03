@@ -61,6 +61,23 @@ def test_jbb_behaviors_dataset():
         assert _is_conversation(conv)
 
 
+
+def test_mmlu_dataset():
+    from src.dataset import MMLUConfig, MMLUDataset
+
+    config = MMLUConfig(
+        name="mmlu",
+        seed=0,
+        shuffle=False,
+    )
+    dataset = MMLUDataset(config)
+
+    assert len(dataset) == 14042
+    for conv in dataset:
+        assert len(conv) == 2, "MMLU conversation length should be 2"
+        assert _is_conversation(conv)
+
+
 def test_or_bench_dataset():
     from src.dataset import ORBenchConfig, ORBenchDataset
 

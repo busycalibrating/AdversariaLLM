@@ -1,10 +1,16 @@
+import copy
 import datetime
+import random
+import string
 import time
+
 import pytest
 import torch
 import transformers
-from transformers import AutoTokenizer
-from src.lm_utils import prepare_conversation
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
+
+from src.types import Conversation
+from src.lm_utils import prepare_conversation, filter_suffix
 
 
 @pytest.fixture(autouse=True)
@@ -631,12 +637,10 @@ def test_prepare_conversation_ground_truth_with_none(model_id, ground_truth, bas
         assert torch.equal(target, gt["target"]), f"TARGET mismatch for {model_id}, {target}, {gt['target']}"
 
 
-def generate_test_conversations(n: int, add_spaces: bool = False, add_prefix: bool = True, add_suffix: bool = True) -> list[list[dict[str, str]]]:
+def generate_test_conversations(n: int, add_spaces: bool = False, add_prefix: bool = True, add_suffix: bool = True) -> tuple[list[Conversation], list[Conversation]]:
     """Generate n test conversations with random content."""
     conversations = []
     conversations_with_attack = []
-    import random
-    import string
 
     def get_random_string():
         return ''.join(random.choice(string.ascii_letters) for _ in range(random.randint(1, 10)))
@@ -695,3 +699,56 @@ def test_prepare_conversation_performance():
     print(f"Average time per conversation: {avg_time_per_conversation*1000:.2f} ms")
     # Add assertions to ensure reasonable performance
     assert conversations_per_second > 50.0, "Should process at least 50 conversation per second"
+
+def test_prepare_conversation_gcg_style():
+    """Test the prepare_conversation function with GCG style."""
+    def filter_suffix_nanogcg(tokenizer: PreTrainedTokenizerBase, suffix_candidates):
+        retain_idx = []
+        ids_decoded = tokenizer.batch_decode(suffix_candidates)
+        for i, suffix_tokens in enumerate(ids_decoded):
+            if torch.equal(suffix_candidates[i], tokenizer(suffix_tokens, add_special_tokens=False, return_tensors="pt").input_ids[0]):
+                retain_idx.append(i)
+        return retain_idx
+
+    tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
+
+    from src.dataset import PromptDataset
+    from src.dataset.adv_behaviors import AdvBehaviorsConfig
+
+    dataset_class = PromptDataset.from_name("adv_behaviors")
+    dataset = dataset_class(AdvBehaviorsConfig())
+    total_blocked = {
+        "nanogcg": 0,
+        "prepare_conversation": 0,
+    }
+    N_per_prompt = 10
+    steps = 250
+    ratios = []
+    from src.lm_utils import get_disallowed_ids
+    for prompt_idx in range(len(dataset)):
+        conversation = dataset[prompt_idx]
+        conversation_opt = copy.deepcopy(conversation)
+        conversation_opt[0]["content"] += " x x x x x x x x x x x x x x x x x x x x x x"
+
+        pre, attack_prefix, prompt, attack_suffix, post, target = prepare_conversation(tokenizer, conversation, conversation_opt)[0]
+        suffix_candidates = torch.stack([attack_suffix] * N_per_prompt * steps)
+        idx_to_change = torch.randint(0, len(attack_suffix), (suffix_candidates.size(0),), dtype=torch.long)
+
+
+        values = sorted(list(set(range(len(tokenizer))) - set(get_disallowed_ids(tokenizer, allow_non_ascii=True, allow_special=False).tolist())))
+        values_to_change = torch.randint(0, len(values), (suffix_candidates.size(0),), dtype=torch.long)
+        for i in range(N_per_prompt):
+            for j in range(steps):
+                if j > 0:
+                    suffix_candidates[i*steps + j] = suffix_candidates[i*steps + j-1]
+                suffix_candidates[i*steps + j, idx_to_change[i*steps + j]] = values[values_to_change[i*steps + j]]
+        out = filter_suffix(tokenizer, conversation, [[None, suffix_candidates]])
+        ref_out = filter_suffix_nanogcg(tokenizer, suffix_candidates)
+        num_blocked_prepare_conversation = suffix_candidates.size(0) - len(out)
+        num_blocked_nanogcg = suffix_candidates.size(0) - len(ref_out)
+        total_blocked["nanogcg"] += num_blocked_nanogcg
+        total_blocked["prepare_conversation"] += num_blocked_prepare_conversation
+
+        ratios.append(num_blocked_prepare_conversation / num_blocked_nanogcg)
+        assert not (set(out) - set(ref_out)), "We filter out at least all suffixes that nanogcg filters"
+    assert total_blocked["prepare_conversation"] > total_blocked["nanogcg"], "We should catch more suffixes than nanogcg filters"
