@@ -162,7 +162,8 @@ class PrompterModel(nn.Module):
             "bos_token_id": self.tokenizer.bos_token_id,
             "num_return_sequences": num_steps,
             "num_beams": num_steps,
-            "num_beam_groups": num_steps,
+            # Set num_beam_groups to 1 to use regular beam search instead of group beam search
+            "num_beam_groups": 1,
         }
         self.gen_config = HuggingFaceGenerationConfig(
             **config.generation_config, **self.gen_kwargs

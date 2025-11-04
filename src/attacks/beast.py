@@ -284,9 +284,9 @@ class BEASTAttack(Attack):
             # Expand prefix cache to match batch size if available
             if self.prefix_cache is not None:
                 cache = copy.deepcopy(self.prefix_cache)
-                for i in range(len(cache.key_cache)):
-                    cache.key_cache[i] = cache.key_cache[i].expand(B, -1, -1, -1)
-                    cache.value_cache[i] = cache.value_cache[i].expand(B, -1, -1, -1)
+                for i, layer in enumerate(cache.layers):
+                    layer.keys = layer.keys.expand(B, -1, -1, -1)
+                    layer.values = layer.values.expand(B, -1, -1, -1)
             else:
                 cache = None
             if attention_mask is not None:
@@ -332,9 +332,9 @@ class BEASTAttack(Attack):
 
             # Expand cache to match batch size
             cache = copy.deepcopy(self.prefix_cache)
-            for i in range(len(cache.key_cache)):
-                cache.key_cache[i] = cache.key_cache[i].expand(tensor.size(0), -1, -1, -1)
-                cache.value_cache[i] = cache.value_cache[i].expand(tensor.size(0), -1, -1, -1)
+            for i, layer in enumerate(cache.layers):
+                layer.keys = layer.keys.expand(tensor.size(0), -1, -1, -1)
+                layer.values = layer.values.expand(tensor.size(0), -1, -1, -1)
         else:
             # Fall back to the original implementation if prefix cache is not available
             tensor = torch.stack([

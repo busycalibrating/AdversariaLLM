@@ -1,4 +1,23 @@
-"""Single-file implementation of the GCG attack with dynamic adversarial prefix creation.
+"""
+Single-file implementation of the GCG attack with dynamic adversarial prefix creation.
+
+@article{zou2023universal,
+  title={Universal and Transferable Adversarial Attacks on Aligned Language Models},
+  author={Zou, Andy and Wang, Zifan and Carlini, Nicholas and Nasr, Milad and Kolter, J Zico and Fredrikson, Matt},
+  journal={arXiv preprint arXiv:2307.15043},
+  year={2023}
+}
+
+and
+
+@article{arditi2024refusal,
+  title={Refusal in language models is mediated by a single direction},
+  author={Arditi, Andy and Obeso, Oscar and Syed, Aaquib and Paleka, Daniel and Panickssery, Nina and Gurnee, Wes and Nanda, Neel},
+  journal={Advances in Neural Information Processing Systems},
+  volume={37},
+  pages={136037--136083},
+  year={2024}
+}
 """
 import gc
 import logging
@@ -13,7 +32,7 @@ from accelerate.utils import find_executable_batch_size
 from torch import Tensor
 from tqdm import trange
 
-from .attack import Attack, AttackResult
+from .attack import Attack, AttackResult, SingleAttackRunResult, AttackStepResult
 from ..lm_utils import filter_suffix, get_disallowed_ids, generate_ragged_batched, prepare_tokens
 
 
@@ -73,7 +92,7 @@ class GCGRefusalAttack(Attack):
 
     def run(self, model, tokenizer, dataset) -> AttackResult:
         not_allowed_ids = get_disallowed_ids(tokenizer, self.config.allow_non_ascii, self.config.allow_special).to(model.device)
-        results = AttackResult([], [], [], [], [])
+        runs = []
 
         # if model.name_or_path == "GraySwanAI/Llama-3-8B-Instruct-RR":
         #     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -85,70 +104,76 @@ class GCGRefusalAttack(Attack):
         target_tokenizer = tokenizer
         fwd_pre_hooks, fwd_hooks = toxify(target_model, tokenizer, from_cache=True)
 
-        for msg, target in dataset:
-            msg: dict[str, str]
-            target: str
-            t0 = time.time()
+        for conversation in dataset:
+            run_result = self._attack_single_conversation(model, tokenizer, conversation, target_model, target_tokenizer, fwd_pre_hooks, fwd_hooks, not_allowed_ids)
+            runs.append(run_result)
 
-            with add_hooks(module_forward_pre_hooks=fwd_pre_hooks, module_forward_hooks=fwd_hooks):
-                fluent_target = generate_ragged_batched(
-                    target_model,
-                    target_tokenizer,
-                    [torch.cat(prepare_tokens(target_tokenizer, msg["content"], "", placement="prompt")[:4], dim=0)],
-                    max_new_tokens=self.config.max_new_target_tokens,
-                )[0]
-                print(target, "->", fluent_target)
-                target = fluent_target
-            torch.cuda.empty_cache()
+        return AttackResult(runs=runs)
 
-            pre_ids, prompt_ids, attack_ids, post_ids, target_ids = prepare_tokens(
-                tokenizer,
-                msg["content"],
-                target,
-                attack=self.config.optim_str_init,
-                placement="suffix",
-            )
-            pre_ids = pre_ids.unsqueeze(0).to(model.device)
-            prompt_ids = prompt_ids.unsqueeze(0).to(model.device)
-            pre_prompt_ids = torch.cat([pre_ids, prompt_ids], dim=1)
-            attack_ids = attack_ids.unsqueeze(0).to(model.device)
-            post_ids = post_ids.unsqueeze(0).to(model.device)
-            target_ids = target_ids.unsqueeze(0).to(model.device)
+    def _attack_single_conversation(self, model, tokenizer, conversation, target_model, target_tokenizer, fwd_pre_hooks, fwd_hooks, not_allowed_ids) -> SingleAttackRunResult:
+        msg = conversation[0]
+        target = conversation[1]["content"]
+        t0 = time.time()
 
-            # Embed everything that doesn't get optimized
-            embedding_layer = model.get_input_embeddings()
-            pre_prompt_embeds, post_embeds, target_embeds = [
-                embedding_layer(ids) for ids in (pre_prompt_ids, post_ids, target_ids)
-            ]
+        with add_hooks(module_forward_pre_hooks=fwd_pre_hooks, module_forward_hooks=fwd_hooks):
+            fluent_target = generate_ragged_batched(
+                target_model,
+                target_tokenizer,
+                [torch.cat(prepare_tokens(target_tokenizer, msg["content"], "", placement="prompt")[:4], dim=0)],
+                max_new_tokens=self.config.max_new_target_tokens,
+            )[0]
+            print(target, "->", fluent_target)
+            target = fluent_target if isinstance(fluent_target, str) else fluent_target[0]
+        torch.cuda.empty_cache()
 
-            # Compute the KV Cache for tokens that appear before the optimized tokens
-            if self.config.use_prefix_cache and model.name_or_path != "google/gemma-2-2b-it":
-                with torch.no_grad():
-                    output = model(inputs_embeds=pre_prompt_embeds, use_cache=True)
-                    self.prefix_cache = output.past_key_values
-            else:
-                self.prefix_cache = None
+        pre_ids, prompt_ids, attack_ids, post_ids, target_ids = prepare_tokens(
+            tokenizer,
+            msg["content"],
+            target,
+            attack=self.config.optim_str_init,
+            placement="suffix",
+        )
+        pre_ids = pre_ids.unsqueeze(0).to(model.device)
+        prompt_ids = prompt_ids.unsqueeze(0).to(model.device)
+        pre_prompt_ids = torch.cat([pre_ids, prompt_ids], dim=1)
+        attack_ids = attack_ids.unsqueeze(0).to(model.device)
+        post_ids = post_ids.unsqueeze(0).to(model.device)
+        target_ids = target_ids.unsqueeze(0).to(model.device)
 
-            self.target_ids = target_ids
-            self.pre_prompt_embeds = pre_prompt_embeds
-            self.post_embeds = post_embeds
-            self.target_embeds = target_embeds
+        # Embed everything that doesn't get optimized
+        embedding_layer = model.get_input_embeddings()
+        pre_prompt_embeds, post_embeds, target_embeds = [
+            embedding_layer(ids) for ids in (pre_prompt_ids, post_ids, target_ids)
+        ]
 
-            if self.config.grow_target:
-                self.target_length = 1
-            else:
-                self.target_length = target_ids.size(1)
-            # Initialize the attack buffer
-            buffer = self.init_buffer(model, attack_ids)
-            optim_ids = buffer.get_best_ids()
-            token_selection = SubstitutionSelectionStrategy(self.config.token_selection, self.config, self.prefix_cache, self.pre_prompt_embeds, self.post_embeds, self.target_embeds, self.target_ids)
+        # Compute the KV Cache for tokens that appear before the optimized tokens
+        if self.config.use_prefix_cache and model.name_or_path != "google/gemma-2-2b-it":
+            with torch.no_grad():
+                output = model(inputs_embeds=pre_prompt_embeds, use_cache=True)
+                self.prefix_cache = output.past_key_values
+        else:
+            self.prefix_cache = None
 
-            losses = []
-            times = []
-            optim_strings = []
-            self.stop_flag = False
-            current_loss = buffer.get_lowest_loss()
-            for _ in (pbar := trange(self.config.num_steps)):
+        self.target_ids = target_ids
+        self.pre_prompt_embeds = pre_prompt_embeds
+        self.post_embeds = post_embeds
+        self.target_embeds = target_embeds
+
+        if self.config.grow_target:
+            self.target_length = 1
+        else:
+            self.target_length = target_ids.size(1)
+        # Initialize the attack buffer
+        buffer = self.init_buffer(model, attack_ids)
+        optim_ids = buffer.get_best_ids()
+        token_selection = SubstitutionSelectionStrategy(self.config.token_selection, self.config, self.prefix_cache, self.pre_prompt_embeds, self.post_embeds, self.target_embeds, self.target_ids)
+
+        losses = []
+        times = []
+        optim_strings = []
+        self.stop_flag = False
+        current_loss = buffer.get_lowest_loss()
+        for _ in (pbar := trange(self.config.num_steps)):
                 token_selection.target_ids = self.target_ids[:, :self.target_length]
                 token_selection.target_embeds = self.target_embeds[:, :self.target_length]
                 # Compute the token gradient
@@ -167,11 +192,14 @@ class GCGRefusalAttack(Attack):
                         # the entire prompt, not just the attack sequence in an isolated
                         # way. This is because the prompt and attack can affect each
                         # other's tokenization in some cases.
+                        conversation_for_filter = [
+                            {"role": "user", "content": msg["content"]},
+                            {"role": "assistant", "content": target}
+                        ]
                         idx = filter_suffix(
-                            sampled_ids,
                             tokenizer,
-                            msg["content"],
-                            target,
+                            conversation_for_filter,
+                            [[None, sampled_ids.cpu()]],
                         )
 
                         sampled_ids = sampled_ids[idx]
@@ -227,41 +255,61 @@ class GCGRefusalAttack(Attack):
                     self.logger.info("Early stopping due to finding a perfect match.")
                     break
 
-            # Generate completions
-            match self.config.generate_completions:
-                case "all":
-                    attacks = optim_strings
-                case "best":
-                    attacks = [optim_strings[losses.index(min(losses))]]
-                case "last":
-                    attacks = [optim_strings[-1]]
-                case _:
-                    raise ValueError(
-                        f"Unknown value for generate_completions: {self.config.generate_completions}"
-                    )
+        # Generate completions
+        match self.config.generate_completions:
+            case "all":
+                attacks = optim_strings
+            case "best":
+                attacks = [optim_strings[losses.index(min(losses))]]
+            case "last":
+                attacks = [optim_strings[-1]]
+            case _:
+                raise ValueError(
+                    f"Unknown value for generate_completions: {self.config.generate_completions}"
+                )
 
-            token_list = [
-                torch.cat(prepare_tokens(
-                    tokenizer,
-                    prompt=msg["content"],
-                    target="",  # need dummy target (probably)
-                    attack=attack,
-                )[:4])
-                for attack in attacks
-            ]
-            completions = generate_ragged_batched(
-                model,
+        token_list = [
+            torch.cat(prepare_tokens(
                 tokenizer,
-                token_list=token_list,
-                initial_batch_size=self.config.batch_size,
-                max_new_tokens=self.config.max_new_tokens
+                prompt=msg["content"],
+                target="",  # need dummy target (probably)
+                attack=attack,
+            )[:4])
+            for attack in attacks
+        ]
+        completions = generate_ragged_batched(
+            model,
+            tokenizer,
+            token_list=token_list,
+            initial_batch_size=self.config.batch_size,
+            max_new_tokens=self.config.max_new_tokens
+        )
+
+        # Create steps from the optimization process
+        steps = []
+        for i, (loss, time_taken, attack_str) in enumerate(zip(losses, times, optim_strings)):
+            step = AttackStepResult(
+                step=i,
+                model_completions=[],  # We don't have per-step completions
+                loss=loss,
+                time_taken=time_taken
             )
-            results.losses.append(losses)
-            results.attacks.append(optim_strings)
-            results.prompts.append(msg)
-            results.completions.append(completions)
-            results.times.append(times)
-        return results
+            steps.append(step)
+
+        # Create the final conversation with the best attack
+        best_attack_idx = losses.index(min(losses)) if losses else -1
+        best_attack = optim_strings[best_attack_idx] if optim_strings else ""
+
+        conversation_result = [
+            {"role": "user", "content": msg["content"] + best_attack},
+            {"role": "assistant", "content": completions[0] if completions else ""}
+        ]
+
+        return SingleAttackRunResult(
+            original_prompt=conversation_result,
+            steps=steps,
+            total_time=time.time() - t0
+        )
 
     def init_buffer(self, model, init_buffer_ids):
         config = self.config
@@ -333,19 +381,17 @@ class GCGRefusalAttack(Attack):
                         ],
                         dim=1,
                     )
-                    for i, kc in enumerate(self.prefix_cache.key_cache):
-                        self.prefix_cache.key_cache[i] = kc[:1, :, :T].expand(B, -1, -1, -1)
-                    for i, vc in enumerate(self.prefix_cache.value_cache):
-                        self.prefix_cache.value_cache[i] = vc[:1, :, :T].expand(B, -1, -1, -1)
+                    for i, layer in enumerate(self.prefix_cache.layers):
+                        layer.keys = layer.keys[:1, :, :T].expand(B, -1, -1, -1)
+                        layer.values = layer.values[:1, :, :T].expand(B, -1, -1, -1)
                     outputs = model(
                         inputs_embeds=input_embeds,
                         past_key_values=self.prefix_cache,
                         use_cache=True,
                     )
-                    for i, kc in enumerate(self.prefix_cache.key_cache):
-                        self.prefix_cache.key_cache[i] = kc[:1]
-                    for i, vc in enumerate(self.prefix_cache.value_cache):
-                        self.prefix_cache.value_cache[i] = vc[:1]
+                    for i, layer in enumerate(self.prefix_cache.layers):
+                        layer.keys = layer.keys[:1]
+                        layer.values = layer.values[:1]
                     self.prefix_cache.crop(T)
                 else:
                     outputs = model(inputs_embeds=input_embeds_batch)

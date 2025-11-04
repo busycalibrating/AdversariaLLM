@@ -519,19 +519,17 @@ class GCGAttack(Attack):
                 ],
                 dim=1,
             )
-            for i, kc in enumerate(self.prefix_cache.key_cache):
-                self.prefix_cache.key_cache[i] = kc[:1, :, :T].expand(B, -1, -1, -1)
-            for i, vc in enumerate(self.prefix_cache.value_cache):
-                self.prefix_cache.value_cache[i] = vc[:1, :, :T].expand(B, -1, -1, -1)
+            for i, layer in enumerate(self.prefix_cache.layers):
+                layer.keys = layer.keys[:1, :, :T].expand(B, -1, -1, -1)
+                layer.values = layer.values[:1, :, :T].expand(B, -1, -1, -1)
             outputs = model(
                 inputs_embeds=input_embeds,
                 past_key_values=self.prefix_cache,
                 use_cache=True,
             )
-            for i, kc in enumerate(self.prefix_cache.key_cache):
-                self.prefix_cache.key_cache[i] = kc[:1]
-            for i, vc in enumerate(self.prefix_cache.value_cache):
-                self.prefix_cache.value_cache[i] = vc[:1]
+            for i, layer in enumerate(self.prefix_cache.layers):
+                layer.keys = layer.keys[:1]
+                layer.values = layer.values[:1]
             self.prefix_cache.crop(T)
         else:
             input_embeds = torch.cat(
@@ -953,19 +951,17 @@ class SubstitutionSelectionStrategy:
             input_embeds = torch.cat(
                 [optim_embeds, self.post_embeds.repeat(B, 1, 1), self.target_embeds.repeat(B, 1, 1)], dim=1
             )
-            for i, kc in enumerate(self.prefix_cache.key_cache):
-                self.prefix_cache.key_cache[i] = kc[:1, :, :T].expand(B, -1, -1, -1)
-            for i, vc in enumerate(self.prefix_cache.value_cache):
-                self.prefix_cache.value_cache[i] = vc[:1, :, :T].expand(B, -1, -1, -1)
+            for i, layer in enumerate(self.prefix_cache.layers):
+                layer.keys = layer.keys[:1, :, :T].expand(B, -1, -1, -1)
+                layer.values = layer.values[:1, :, :T].expand(B, -1, -1, -1)
             output = model(
                 inputs_embeds=input_embeds,
                 past_key_values=self.prefix_cache,
                 use_cache=True,
             )
-            for i, kc in enumerate(self.prefix_cache.key_cache):
-                self.prefix_cache.key_cache[i] = kc[:1]
-            for i, vc in enumerate(self.prefix_cache.value_cache):
-                self.prefix_cache.value_cache[i] = vc[:1]
+            for i, layer in enumerate(self.prefix_cache.layers):
+                layer.keys = layer.keys[:1]
+                layer.values = layer.values[:1]
             self.prefix_cache.crop(T)
         else:
             input_embeds = torch.cat(

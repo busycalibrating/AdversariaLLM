@@ -79,7 +79,7 @@ class ActorSingleAttackRunResult(SingleAttackRunResult):
     attack_plan: AttackPlan = field(
         default_factory=lambda: AttackPlan()
     )  # this is not optional, as the best attempt and the other attempts need to save the attack plan
-    other_attempts: Optional[list[ActorSingleAttackRunResult]] = field(default_factory=list)
+    other_attempts: Optional[list["ActorSingleAttackRunResult"]] = field(default_factory=list)
 
 
 @beartype
@@ -165,7 +165,7 @@ class ActorAttack(Attack[ActorAttackResult]):
         logging.info("Finished actor attack")
         return res
 
-    def setup_models(self, model, tokenizer) -> tuple[TextGenerator, TextGenerator, Judge]:
+    def setup_models(self, model, tokenizer) -> tuple[TextGenerator, TextGenerator, "Judge"]:
         # target
         target_generate_kwargs = {**self.target_generation_config, "filters": self.free_gen_repetition_filters}
         target = LocalTextGenerator(model, tokenizer, default_generate_kwargs=target_generate_kwargs)
@@ -401,7 +401,7 @@ class ActorAttack(Attack[ActorAttackResult]):
         convs: list[Conversation],
         full_queries: list[list[str]],  # batch of all extracted queries for the conversation
         query_details_list: list[dict[str, str]],
-    ) -> tuple[list[str], list[Conversation]]:
+    ) -> tuple[list[str], list[Conversation], list[bool]]:
         """Regenerate the query if the judge detects a refusal in the response."""
 
         # check if the model refused
@@ -455,7 +455,7 @@ class ActorAttack(Attack[ActorAttackResult]):
         self,
         target_model: TextGenerator,
         attack_model: TextGenerator,
-        judge: Judge,
+        judge: "Judge",
         instructions: list[str],
         queries: list[list[list[str]]],
         query_details_list: list[dict[str, str]],
@@ -564,7 +564,7 @@ class ActorAttack(Attack[ActorAttackResult]):
     def summary(
         self,
         target_model: TextGenerator,
-        judge: Judge,
+        judge: "Judge",
         instructions: list[str],
         query_details_list: list[dict[str, str]],
         convs_list: list[list[Conversation]],
@@ -669,7 +669,7 @@ class ActorAttack(Attack[ActorAttackResult]):
         target_model: TextGenerator,
         attack_model: TextGenerator,
         attack_strat: dict,
-        judge: Judge,
+        judge: "Judge",
     ) -> list[list[Conversation]]:
         convs_list = self.unroll_multi_turn(
             target_model,

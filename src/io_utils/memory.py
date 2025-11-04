@@ -10,6 +10,6 @@ import torch
 
 
 def free_vram():
-    for _ in range(3):
+    for _ in range(2):
         gc.collect()
         torch.cuda.empty_cache()

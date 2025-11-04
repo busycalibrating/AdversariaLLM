@@ -1,4 +1,4 @@
-"""
+r"""
 Single-file implementation of human-designed jailbreaks from HarmBench.
 
 @misc{harmbench2023jailbreaks,
