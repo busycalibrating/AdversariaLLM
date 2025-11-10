@@ -9,6 +9,9 @@ Implementation of a one-hot-input space continuous attack with discretization.
 }
 
 Also implements a discretization attack based on Geisler et al. (2024).
+WARNING: This implementation currently lacks some of the features of the reference implementation
+and leads to worse results. This will be fixed in a future version. 
+Use https://github.com/sigeisler/reinforce-attacks-llms to reproduce official results.
 """
 import copy
 import functools
@@ -42,10 +45,10 @@ class LRSchedulerConfig:
 @dataclass
 class PGDDiscreteConfig:
     name: str = "pgd_discrete"
-    type: str = "continuous"
-    placement: str = "suffix" # Note: Not explicitly used in provided code structure
+    type: str = "hybrid"
+    placement: str = "suffix"
     version: str = ""
-    num_steps: int = 100
+    num_steps: int = 5000
     generation_config: GenerationConfig = field(default_factory=GenerationConfig)
     seed: int = 0
     optim_str_init: str = "x x x x x x x x x x x x x x x x x x x x"
@@ -85,6 +88,7 @@ class PGDAttackStepResult(AttackStepResult):
 class PGDDiscreteAttack(Attack):
     def __init__(self, config: PGDDiscreteConfig):
         super().__init__(config)
+        logging.warning("This implementation is WIP. To reproduce Geisler et al. (2024), use their official code.")
 
     def run(self, model: torch.nn.Module, tokenizer, dataset) -> AttackResult:
         x, attack_masks, target_masks, conversations = self._prepare_dataset(dataset, tokenizer)
