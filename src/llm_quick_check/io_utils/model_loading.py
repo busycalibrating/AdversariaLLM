@@ -25,6 +25,13 @@ from peft import PeftConfig, AutoPeftModelForCausalLM, get_peft_model, PeftModel
 disable_progress_bar()  # disable progress bar for model loading
 
 
+def _add_num_embeddings(model: PreTrainedModel):
+    embeddings = model.get_input_embeddings()
+    if hasattr(embeddings, "original_module") and not hasattr(embeddings, "num_embeddings"):
+        embeddings.num_embeddings = embeddings.original_module.num_embeddings
+
+
+
 def _load_merge_peft(model_name, peft_name, manual_untie_embeddings=False, dtype=None):
     config = PeftConfig.from_pretrained(peft_name)
     if manual_untie_embeddings:
@@ -190,6 +197,8 @@ def load_model_and_tokenizer(
         case path if "zephyr" in path:
             tokenizer.model_max_length = 32768
         case path if "openai/gpt-oss" in path:
+            tokenizer.model_max_length = 128000
+        case path if "qwen/qwen3" in path:
             tokenizer.model_max_length = 128000
     if tokenizer.model_max_length > 262144:
         raise ValueError(f"Model max length {tokenizer.model_max_length} is probably too large.")
