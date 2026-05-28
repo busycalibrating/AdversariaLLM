@@ -2,8 +2,8 @@ defaults:
   - attacks: attacks
   - datasets: datasets
   - models: models
-  # - paths
-  # - override hydra/launcher: mila_generic
+  - paths
+  # - override hydra/launcher: a100h100.yaml
   - _self_
 
 hydra:
@@ -18,13 +18,13 @@ hydra:
   sweep:
     dir: ${root_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}/
 
-name: RF_llama3-2
-root_dir: ${oc.env:PWD}
-save_dir: ${root_dir}/outputs/rf_test
-log_file_path: ${save_dir}/redflag_llama3-2/${attack_name}/run-${datasets.rf_test.idx}__${now:%H-%M-%S}.json 
+generation_config:
+  temperature: 0.0
+  top_p: 1.0
+  top_k: 0
+  max_new_tokens: 256
+  num_return_sequences: 1
 
-log_toks_strs: True
-hf_offline_mode: True
 # attacks:
 #   gcg:
 #     num_steps: 300
@@ -34,23 +34,30 @@ hf_offline_mode: True
 #     path: ${oc.env:HOME}/harmful-harmless-eval/
 
 # Define the model lists for each attack type (hidden from final config)
-_gcg_models: 
-  - ${models.${model_name}.id}
-  - ${models.${model_name}.tokenizer_id}
+_gcg_models:
+  - ${models.${model}.id}
+  - ${models.${model}.tokenizer_id}
 
-_pair_models: 
-  - ${models.${model_name}.id} 
-  - ${models.${model_name}.tokenizer_id} 
+_pair_models:
+  - ${models.${model}.id}
+  - ${models.${model}.tokenizer_id}
   - lmsys/vicuna-13b-v1.5
   - cais/HarmBench-Llama-2-13b-cls
 
 slurm_copy_hf_cache:
-  # Automatically select models based on attack_name
-  models: ${oc.select:_${attack_name}_models,${_gcg_models}}
+  # Automatically select models based on attack
+  models: ${oc.select:_${attack}_models,${_gcg_models}}
+
+name: RF_llama3-2
+save_dir: ${root_dir}/outputs/rf_test/${name}/${attack}/results/
+embed_dir: ${root_dir}/outputs/rf_test/${name}/${attack}/embeddings/
+overwrite: false
+save_format: noDB
+use_database: false
+
+classifiers: ["strong_reject"]
 
 # overrides for parallelism
-attack_name: gcg # pair
-dataset_name: rf_test # adv_behaviors
-model_name: redflag-tokens/llama3-2-rf-v2
-
-wandb: null
+attack: gcg
+dataset: rf_test
+model: redflag-tokens/llama3-2-rf-v2

@@ -2,8 +2,8 @@ defaults:
   - attacks: attacks
   - datasets: datasets
   - models: models
-  # - paths
-  # - override hydra/launcher: mila_generic
+  - paths
+  # - override hydra/launcher: a100h100.yaml
   - _self_
 
 hydra:
@@ -18,6 +18,13 @@ hydra:
   sweep:
     dir: ${root_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}/
 
+generation_config:
+  temperature: 0.0
+  top_p: 1.0
+  top_k: 0
+  max_new_tokens: 256
+  num_return_sequences: 1
+
 attacks:
   gcg:
     num_steps: 300
@@ -27,31 +34,30 @@ datasets:
     batch: 10
     path: ${oc.env:HOME}/harmful-harmless-eval/
 
-_gcg_models: 
-  - ${models.${model_name}.id}
-  - ${models.${model_name}.tokenizer_id}
+_gcg_models:
+  - ${models.${model}.id}
+  - ${models.${model}.tokenizer_id}
 
-_pair_models: 
-  - ${models.${model_name}.id} 
-  - ${models.${model_name}.tokenizer_id} 
+_pair_models:
+  - ${models.${model}.id}
+  - ${models.${model}.tokenizer_id}
   - lmsys/vicuna-13b-v1.5
   - cais/HarmBench-Llama-2-13b-cls
 
-# automatically select models based on attack_name
+# automatically select models based on attack
 slurm_copy_hf_cache:
-  models: ${oc.select:_${attack_name}_models,${_gcg_models}}
+  models: ${oc.select:_${attack}_models,${_gcg_models}}
 
-name: ${model_name}
-root_dir: ${oc.env:PWD}
-save_dir: ${root_dir}/outputs/rf_test/v3
-log_file_path: ${save_dir}/${name}/${attack_name}/run-${datasets.rf_test.idx}__${now:%H-%M-%S}.json 
+name: ${model}
+save_dir: ${root_dir}/outputs/rf_test/v3/${name}/${attack}/results/
+embed_dir: ${root_dir}/outputs/rf_test/v3/${name}/${attack}/embeddings/
+overwrite: false
+save_format: noDB
+use_database: false
 
-log_toks_strs: True
-hf_offline_mode: True
+classifiers: ["strong_reject"]
 
 # overrides for parallelism
-attack_name: gcg # pair
-dataset_name: rf_test # adv_behaviors
-model_name: redflag-tokens/llama3-1-8b-rf-multi
-
-wandb: null
+attack: gcg
+dataset: rf_test
+model: redflag-tokens/llama3-1-8b-rf-multi
